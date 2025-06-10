@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>HTML Test Report Parser</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 10px; }
+    #fileInput { margin-bottom: 10px; }
+    .container { display: flex; gap: 20px; height: 90vh; }
+    iframe { width: 50%; height: 100%; border: 1px solid #ccc; }
+    #result { width: 50%; padding: 1em; overflow-y: auto; }
+    canvas { width: 500px !important; height: 500px !important; }
+  </style>
+</head>
+<body>
+  <input type="file" id="fileInput" accept=".html">
+  <div class="container">
+    <iframe id="preview"></iframe>
+    <div id="result"></div>
+  </div>
+
+  <script>
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const html = event.target.result;
+        const iframe = document.getElementById('preview');
+        iframe.srcdoc = html;
+
+        setTimeout(() => {
+          const doc = iframe.contentDocument || iframe.contentWindow.document;
+
+          try {
+            const name = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[1]/td", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const time = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[2]/td", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const total = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/text()[1]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const pass = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/span[1]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const fail = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/span[2]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const error = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/span[3]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const incomplete = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/span[4]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+            const skipped = doc.evaluate("/html/body/div[4]/div[2]/table/tbody/tr[3]/td/span[5]", doc, null, XPathResult.STRING_TYPE, null).stringValue.trim();
+
+            let resultHTML = `<h2>📋 테스트 요약</h2>`;
+            resultHTML += `<p><strong>TC 명칭:</strong> ${name}</p>`;
+            resultHTML += `<p><strong>시간:</strong> ${time}</p>`;
+            resultHTML += `<p><strong>전체:</strong> ${total}</p>`;
+            resultHTML += `<p><strong>pass:</strong> ${pass}</p>`;
+            resultHTML += `<p><strong>fail:</strong> ${fail}</p>`;
+            resultHTML += `<p><strong>error:</strong> ${error}</p>`;
+            resultHTML += `<p><strong>incomplete:</strong> ${incomplete}</p>`;
+            resultHTML += `<p><strong>skipped:</strong> ${skipped}</p>`;
+            resultHTML += `<canvas id="chart"></canvas>`;
+            document.getElementById('result').innerHTML = resultHTML;
+
+            const values = [pass, fail, error, incomplete, skipped].map(v => parseInt(v) || 0);
+
+            const ctx = document.getElementById('chart').getContext('2d');
+            new Chart(ctx, {
+              type: 'pie',
+              data: {
+                labels: ["Pass", "Fail", "Error", "Incomplete", "Skipped"],
+                datasets: [{
+                  data: values,
+                  backgroundColor: ["#4caf50", "#f44336", "#ff9800", "#9c27b0", "#03a9f4"]
+                }]
+              },
+              options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    position: 'bottom',
+                    labels: {
+                      font: {
+                        size: 50
+                      }
+                    }
+                  },
+                  tooltip: {
+                    bodyFont: { size: 50 },
+                    titleFont: { size: 50 },
+                    boxPadding: 30
+                  }
+                }
+              }
+            });
+
+          } catch (err) {
+            document.getElementById('result').innerHTML = `<p style="color:red">❌ 파싱 실패: ${err.message}</p>`;
+          }
+        }, 500);
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>

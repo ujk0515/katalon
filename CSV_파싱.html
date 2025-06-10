@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>🔪 CSV 메타데이터 뷰어</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js">
+  document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+    // 1. 헤더 정의
+    const headers = [
+      "Index",
+      "Test Level",
+      "Main Category",
+      "Sub Category",
+      "Detail Category",
+      "Summary",
+      "Precondition",
+      "Steps",
+      "Expected Result"
+    ];
+
+    // 2. 예시 데이터 (비워둠)
+    const data = [headers];
+
+    // 3. 시트 및 워크북 생성
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Testcase");
+
+    // 4. 파일로 변환 및 다운로드
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbout], { type: "application/octet-stream" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "testcase_예시파일.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+</script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js">
+  document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+    // 예시 데이터 생성
+    const ws_data = [
+      ['Summary'],
+      ['폴더1'],
+      ['폴더2'],
+      ['폴더3']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'testcase_예시파일.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+</script>
+  <style>
+    body {
+      background-color: #f8fafc;
+      padding: 40px;
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .container {
+      max-width: 100%;
+      margin: auto;
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    h2 {
+      margin-bottom: 20px;
+    }
+    input[type="file"], button {
+      margin-bottom: 20px;
+    }
+    table {
+      width: 100% !important;
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h2>🔪 WebUI.comment 기반 메타데이터 파서</h2>
+  <input type="file" id="csvFile" accept=".csv">
+  <button id="downloadBtn">⬇️ 엑셀 다운로드</button>
+
+  <button id="exampleDownloadBtn">📥 예시파일 다운로드</button>
+
+  <div id="error" class="error"></div>
+  <table id="resultTable" class="display" style="display:none;"></table>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.7.0.min.js">
+  document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+    // 예시 데이터 생성
+    const ws_data = [
+      ['Summary'],
+      ['폴더1'],
+      ['폴더2'],
+      ['폴더3']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'testcase_예시파일.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+</script>
+<script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js">
+  document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+    // 예시 데이터 생성
+    const ws_data = [
+      ['Summary'],
+      ['폴더1'],
+      ['폴더2'],
+      ['폴더3']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'testcase_예시파일.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+</script>
+<script>
+  let parsed = [];
+
+  document.getElementById('csvFile').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const errorDiv = document.getElementById('error');
+    errorDiv.textContent = '';
+
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      const csv = event.target.result;
+      const matches = [...csv.matchAll(/comment\(""[\r\n]+([\s\S]*?)[\r\n]+""\)/g)];
+      parsed = [];
+
+      for (let i = 0; i < matches.length; i++) {
+        const lines = matches[i][1].split(/\r?\n/);
+        const obj = { Index: i + 1 };
+        let currentKey = null;
+        let currentValue = [];
+
+        const pushCurrent = () => {
+          if (currentKey) {
+            obj[currentKey] = currentValue.join('<br>');
+            currentKey = null;
+            currentValue = [];
+          }
+        };
+
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (line.startsWith('=') || line === '') continue;
+
+          const parts = line.split(':');
+          if (parts.length >= 2) {
+            pushCurrent();
+            currentKey = parts[0].trim();
+            currentValue.push(parts.slice(1).join(':').trim());
+          } else if (currentKey) {
+            currentValue.push(line);
+          }
+        }
+        pushCurrent();
+        parsed.push(obj);
+      }
+
+      if (parsed.length === 0) {
+        errorDiv.textContent = '⚠️ 유용한 comment(""" ... """) 메타데이터 블록을 찾을 수 없습니다.';
+        return;
+      }
+
+      const allKeys = [...new Set(parsed.flatMap(o => Object.keys(o)))];
+      const data = parsed.map(row => allKeys.map(k => row[k] || ''));
+
+      const table = $('#resultTable');
+      table.show();
+      table.DataTable({
+        data: data,
+        columns: allKeys.map(h => ({ title: h })),
+        destroy: true,
+        scrollX: true,
+        pageLength: 10
+      });
+    };
+    reader.readAsText(file, 'UTF-8');
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', function() {
+    if (!parsed || parsed.length === 0) {
+      alert("다운로드할 데이터가 없습니다.");
+      return;
+    }
+
+    const converted = parsed.map(row => {
+      const newRow = {};
+      for (const key in row) {
+        const raw = row[key];
+        newRow[key] = typeof raw === 'string' ? raw.replace(/<br\s*\/?>/g, '\n') : raw;
+      }
+      return newRow;
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(converted);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Metadata");
+
+    const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbout], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    });
+
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "testcase_metadata.xlsx";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+  document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+    // 예시 데이터 생성
+    const ws_data = [
+      ['Summary'],
+      ['폴더1'],
+      ['폴더2'],
+      ['폴더3']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(ws_data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([wbout], { type: 'application/octet-stream' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'testcase_예시파일.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+
+</script>
+</body>
+</html>

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>폴더 ZIP 생성기</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { 
+      font-family: 'Segoe UI', sans-serif; 
+      padding: 20px;
+      max-width: 800px;
+      margin: 0 auto;
+      background-color: #f5f5f5;
+    }
+    .container {
+      background-color: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h3 {
+      color: #333;
+      margin-bottom: 20px;
+    }
+    .input-group {
+      margin-bottom: 15px;
+    }
+    input[type="text"] { 
+      margin: 5px 0; 
+      padding: 8px 12px;
+      width: 100%;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button { 
+      margin: 10px 5px 0 0; 
+      padding: 8px 16px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button.remove {
+      background-color: #f44336;
+    }
+    button.remove:hover {
+      background-color: #da190b;
+    }
+    .file-upload {
+      margin-bottom: 20px;
+      padding: 20px;
+      border: 2px dashed #ddd;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .file-upload:hover {
+      border-color: #4CAF50;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h3>📂 폴더 ZIP 생성기</h3>
+
+    <div class="file-upload">
+      <p>엑셀 파일로 폴더명을 가져오기 (선택사항)</p>
+      <input type="file" id="excelInput" accept=".xlsx, .xls">
+    </div>
+
+    <div id="inputArea">
+      <div class="input-group">
+        <input type="text" placeholder="폴더명 입력">
+        <button class="remove" onclick="removeInput(this)" style="display: none;">삭제</button>
+      </div>
+    </div>
+
+    <button onclick="addInput()">+ 폴더 추가</button>
+    <button onclick="generateZip()">�� ZIP 다운로드</button>
+    <button onclick="downloadSampleExcel()">📥 엑셀 예시파일 다운로드</button>
+  </div>
+
+  <script>
+    function addInput(value = '') {
+      const inputGroup = document.createElement('div');
+      inputGroup.className = 'input-group';
+      
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = '폴더명 입력';
+      input.value = value;
+      
+      const removeButton = document.createElement('button');
+      removeButton.className = 'remove';
+      removeButton.textContent = '삭제';
+      removeButton.onclick = function() { removeInput(this); };
+      
+      inputGroup.appendChild(input);
+      inputGroup.appendChild(removeButton);
+      document.getElementById('inputArea').appendChild(inputGroup);
+      
+      // 첫 번째 입력 필드가 아닌 경우에만 삭제 버튼 표시
+      if (document.querySelectorAll('.input-group').length > 1) {
+        document.querySelectorAll('.remove').forEach(btn => btn.style.display = 'inline-block');
+      }
+    }
+
+    function removeInput(button) {
+      const inputGroup = button.parentElement;
+      inputGroup.remove();
+      
+      // 마지막 입력 필드가 남은 경우 삭제 버튼 숨기기
+      if (document.querySelectorAll('.input-group').length === 1) {
+        document.querySelector('.remove').style.display = 'none';
+      }
+    }
+
+    function generateZip() {
+      const zip = new JSZip();
+      const inputs = document.querySelectorAll('#inputArea input');
+      let folderAdded = false;
+
+      inputs.forEach(input => {
+        const folderName = input.value.trim();
+        if (folderName) {
+          zip.folder(folderName + '/');
+          folderAdded = true;
+        }
+      });
+
+      if (!folderAdded) {
+        alert("최소 1개 이상의 폴더명을 입력해주세요.");
+        return;
+      }
+
+      zip.generateAsync({ type: "blob" }).then(blob => {
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "폴더모음.zip";
+        link.click();
+      });
+    }
+
+    function downloadSampleExcel() {
+      // 예시 데이터 생성
+      const ws_data = [
+        ['Summary'],
+        ['폴더1'],
+        ['폴더2'],
+        ['폴더3']
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(ws_data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/octet-stream' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'testcase_예시파일.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    document.getElementById('excelInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const data = new Uint8Array(event.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+        if (json.length === 0) {
+          alert("엑셀 파일이 비어 있습니다.");
+          return;
+        }
+
+        const headerRow = json[0];
+        const summaryIndex = headerRow.indexOf('Summary');
+
+        if (summaryIndex === -1) {
+          alert("'Summary'라는 열을 찾을 수 없습니다. 엑셀 파일을 확인해주세요.");
+          return;
+        }
+
+        // 기존 input 초기화
+        document.getElementById('inputArea').innerHTML = '';
+
+        for (let i = 1; i < json.length; i++) {
+          const row = json[i];
+          const folderName = row[summaryIndex];
+          if (folderName) addInput(folderName);
+        }
+
+        if (document.querySelectorAll('.input-group').length === 0) {
+          addInput('');
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  </script>
+</body>
+</html>

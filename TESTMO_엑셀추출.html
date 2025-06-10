@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>📄 TC Excel/CSV 병합/분리 도구</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    h2 { margin-bottom: 10px; }
+    input, button { margin-right: 10px; margin-bottom: 15px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .tab-buttons button { margin-right: 5px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #aaa; padding: 8px; text-align: left; vertical-align: top; }
+    th { background-color: #f0f0f0; }
+    .file-info { margin: 10px 0; padding: 10px; background-color: #f5f5f5; border-radius: 5px; }
+    .tab-description { 
+      background-color: #e3f2fd; 
+      padding: 10px; 
+      border-radius: 5px; 
+      margin-bottom: 15px; 
+      border-left: 4px solid #2196f3; 
+    }
+  </style>
+</head>
+<body>
+
+<h2>📋 Test Case Excel/CSV 병합 / 분리 도구</h2>
+<input type="file" id="fileInput" accept=".xlsx,.csv" />
+<div class="file-info" id="fileInfo" style="display: none;"></div>
+<div class="file-info" id="cleaningInfo" style="display: none; background-color: #e8f5e8; border-left: 4px solid #4caf50;">
+  🧹 HTML 태그 정리 완료! 태그들이 적절히 변환/제거되었습니다.
+</div>
+
+<div class="tab-buttons">
+  <button onclick="switchTab('merge')">📦 병합 탭</button>
+  <button onclick="switchTab('split')">🔍 분리 탭</button>
+</div>
+
+<div id="mergeTab" class="tab active">
+  <div class="tab-description">
+    📦 <strong>병합 탭</strong>: CSV 파일의 Step 1~6 컬럼들을 Combined Steps로 병합합니다.
+  </div>
+  <button onclick="renderMerged()">📦 병합 실행</button>
+  <button onclick="downloadExcel('merged')">⬇ 병합결과 다운로드</button>
+  <div id="mergedTable"></div>
+</div>
+
+<div id="splitTab" class="tab">
+  <div class="tab-description">
+    🔍 <strong>분리 탭</strong>: 엑셀 파일의 Combined Steps를 Step 1~6 컬럼으로 분리합니다.
+  </div>
+  <button onclick="renderSplit()">🔍 분리 실행</button>
+  <button onclick="downloadExcel('split')">⬇ 분리결과 다운로드</button>
+  <div id="splitTable"></div>
+</div>
+
+<script>
+let globalJson = [];
+let mergedExport = [];
+let splitExport = [];
+let currentFileType = '';
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById(tab + 'Tab').classList.add('active');
+}
+
+document.getElementById('fileInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  
+  const fileInfo = document.getElementById('fileInfo');
+  fileInfo.innerHTML = `📁 파일: ${file.name} (${(file.size/1024).toFixed(1)}KB)`;
+  fileInfo.style.display = 'block';
+  
+  // 정리 완료 메시지 표시
+  const cleaningInfo = document.getElementById('cleaningInfo');
+  cleaningInfo.style.display = 'block';
+  
+  const fileExtension = file.name.split('.').pop().toLowerCase();
+  currentFileType = fileExtension;
+  
+  if (fileExtension === 'csv') {
+    // CSV 파일 처리
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const csvText = evt.target.result;
+      Papa.parse(csvText, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        complete: function(results) {
+          globalJson = results.data.map(row => {
+            const cleanedRow = {};
+            Object.keys(row).forEach(key => {
+              let value = row[key];
+              if (typeof value === 'string') {
+                value = cleanHtmlTags(value);
+              }
+              cleanedRow[key] = value;
+            });
+            return cleanedRow;
+          });
+          // CSV 파일이므로 병합 탭만 자동 렌더링
+          renderMerged();
+        }
+      });
+    };
+    reader.readAsText(file, 'utf-8');
+  } else {
+    // Excel 파일 처리
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, {type: 'array'});
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawJson = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+      globalJson = rawJson.map(row => {
+        const cleanedRow = {};
+        Object.keys(row).forEach(key => {
+          let value = row[key];
+          if (typeof value === 'string') {
+            value = cleanHtmlTags(value);
+          }
+          cleanedRow[key] = value;
+        });
+        return cleanedRow;
+      });
+      // 엑셀 파일이므로 분리 탭만 자동 렌더링
+      renderSplit();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+});
+
+function preserveLineBreaks(text) {
+  return (text || '').toString().replace(/\n/g, '<br>');
+}
+
+function cleanHtmlTags(text) {
+  if (!text || typeof text !== 'string') return text;
+  
+  let cleanedText = text;
+  
+  // 1. 줄바꿈 관련 태그들을 \n으로 변환
+  cleanedText = cleanedText
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/?(p|div|h[1-6]|li|tr)[^>]*>/gi, '\n')
+    .replace(/<\/?(ul|ol|table|tbody|thead)[^>]*>/gi, '\n');
+  
+  // 2. 텍스트 서식 태그들 처리 (엑셀에서는 서식이 유지되지 않으므로 내용만 유지)
+  // 강조 태그들 (굵게, 기울임, 밑줄 등)
+  cleanedText = cleanedText
+    .replace(/<\/?(?:b|strong)[^>]*>/gi, '')
+    .replace(/<\/?(?:i|em)[^>]*>/gi, '')
+    .replace(/<\/?u[^>]*>/gi, '')
+    .replace(/<\/?s[^>]*>/gi, '');
+  
+  // 3. 링크 태그 처리 - 링크 텍스트만 유지하거나 URL도 표시
+  cleanedText = cleanedText.replace(/<a[^>]*href=["']([^"']*)["'][^>]*>(.*?)<\/a>/gi, (match, url, text) => {
+    // 링크 텍스트와 URL이 다른 경우 둘 다 표시
+    if (text.trim() && text.trim().toLowerCase() !== url.trim().toLowerCase()) {
+      return `${text.trim()} (${url.trim()})`;
+    }
+    // 그렇지 않으면 URL만 표시
+    return url.trim() || text.trim();
+  });
+  
+  // 4. 이미지 태그 처리 - alt 텍스트나 src 정보 유지
+  cleanedText = cleanedText.replace(/<img[^>]*alt=["']([^"']*)["'][^>]*>/gi, '[이미지: $1]');
+  cleanedText = cleanedText.replace(/<img[^>]*src=["']([^"']*)["'][^>]*>/gi, '[이미지: $1]');
+  cleanedText = cleanedText.replace(/<img[^>]*>/gi, '[이미지]');
+  
+  // 5. 테이블 관련 태그 처리
+  cleanedText = cleanedText.replace(/<\/?t[hd][^>]*>/gi, ' | '); // 테이블 셀을 구분자로
+  
+  // 6. 리스트 관련 태그 처리
+  cleanedText = cleanedText.replace(/<li[^>]*>/gi, '• '); // 리스트 아이템을 불릿으로
+  
+  // 7. 폼 관련 태그들 내용 유지
+  cleanedText = cleanedText.replace(/<input[^>]*value=["']([^"']*)["'][^>]*>/gi, '[$1]');
+  cleanedText = cleanedText.replace(/<textarea[^>]*>(.*?)<\/textarea>/gi, '[$1]');
+  cleanedText = cleanedText.replace(/<select[^>]*>.*?<\/select>/gi, '[선택옵션]');
+  
+  // 8. 코드 관련 태그 처리
+  cleanedText = cleanedText.replace(/<\/?(?:code|pre|kbd)[^>]*>/gi, '`');
+  
+  // 9. 인용문 처리
+  cleanedText = cleanedText.replace(/<\/?(?:blockquote|q)[^>]*>/gi, '"');
+  
+  // 10. 나머지 모든 HTML 태그 제거 (스타일, 스크립트, 기타 태그들)
+  cleanedText = cleanedText.replace(/<script[^>]*>.*?<\/script>/gis, '');
+  cleanedText = cleanedText.replace(/<style[^>]*>.*?<\/style>/gis, '');
+  cleanedText = cleanedText.replace(/<[^>]+>/g, '');
+  
+  // 11. HTML 엔티티 디코딩
+  cleanedText = cleanedText
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&copy;/g, '©')
+    .replace(/&reg;/g, '®')
+    .replace(/&trade;/g, '™');
+  
+  // 12. 연속된 공백과 줄바꿈 정리
+  cleanedText = cleanedText
+    .replace(/\n\s*\n\s*\n/g, '\n\n') // 3개 이상의 연속 줄바꿈을 2개로
+    .replace(/[ \t]+/g, ' ') // 연속된 공백을 하나로
+    .replace(/^\s+|\s+$/g, '') // 앞뒤 공백 제거
+    .replace(/\n\s+/g, '\n') // 줄바꿈 후 공백 제거
+    .replace(/\s+\n/g, '\n'); // 줄바꿈 전 공백 제거
+  
+  return cleanedText;
+}
+
+function addNumberingToText(text) {
+  if (!text || !text.toString().trim()) return text;
+  
+  const textStr = text.toString().trim();
+  // 이미 번호가 있는지 확인
+  if (/^1\.\s/.test(textStr)) {
+    return textStr;
+  }
+  
+  return `1. ${textStr}`;
+}
+
+function renderMerged() {
+  if (currentFileType !== 'csv') {
+    document.getElementById('mergedTable').innerHTML = '<p style="color: #ff6b6b; padding: 20px;">⚠️ 병합 탭은 CSV 파일만 지원합니다. CSV 파일을 업로드해주세요.</p>';
+    return;
+  }
+
+  mergedExport = [];
+  let html = `<table><thead><tr>
+    <th>Folder</th><th>Main Category</th><th>Sub Category</th><th>Detail Category</th>
+    <th>TC Summary</th><th>Precondition</th><th>Test Level</th>
+    <th>Expected Result</th><th>Combined Steps</th>
+  </tr></thead><tbody>`;
+
+  globalJson.forEach((row, index) => {
+    let combinedSteps = '';
+    const stepLikeKeys = Object.keys(row).filter(k => k.toLowerCase().replace(/\s+/g, '') === 'steps(step)');
+    if (stepLikeKeys.length > 0) {
+      const key = stepLikeKeys[0];
+      if (row[key] && row[key].toString().trim()) {
+        combinedSteps += row[key].toString().trim() + '\n';
+      }
+    }
+    let stepIndex = 1;
+    for (let i = 1; i <= 6; i++) {
+      const key = `Step ${i} (Step ${i})`;
+      if (row[key] && row[key].trim()) {
+        combinedSteps += `${stepIndex++}. ${row[key].trim()}\n`;
+      }
+    }
+    
+    // Combined Steps에 번호 추가 (원본 데이터도 업데이트)
+    const cleanedCombinedSteps = combinedSteps.trim();
+    const numberedCombinedSteps = addNumberingToText(cleanedCombinedSteps);
+    
+    // globalJson에도 Combined Steps 값을 저장하여 분리 탭에서 사용할 수 있도록 함
+    globalJson[index]['Combined Steps'] = numberedCombinedSteps;
+    
+    // Expected Result에 번호 추가
+    const expectedResult = row['Expected Result (Expected Result)'] || row['Expected Result'] || '';
+    const numberedExpectedResult = addNumberingToText(expectedResult);
+    
+    mergedExport.push({
+      'Folder': row['Folder'],
+      'Main Category': row['Main Category'],
+      'Sub Category': row['Sub Category'],
+      'Detail Category': row['Detail Category'],
+      'TC Summary': row['TC Summary'],
+      'Precondition': row['Precondition'],
+      'Test Level': row['Test Level'],
+      'Expected Result': numberedExpectedResult,
+      'Combined Steps': numberedCombinedSteps
+    });
+    
+    html += `<tr>
+      <td>${preserveLineBreaks(row['Folder'])}</td><td>${preserveLineBreaks(row['Main Category'])}</td>
+      <td>${preserveLineBreaks(row['Sub Category'])}</td><td>${preserveLineBreaks(row['Detail Category'])}</td>
+      <td>${preserveLineBreaks(row['TC Summary'])}</td><td>${preserveLineBreaks(row['Precondition'])}</td>
+      <td>${preserveLineBreaks(row['Test Level'])}</td><td>${preserveLineBreaks(numberedExpectedResult)}</td>
+      <td>${preserveLineBreaks(numberedCombinedSteps)}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('mergedTable').innerHTML = html;
+}
+
+function splitCombinedSteps(combinedStepsText) {
+  if (!combinedStepsText || !combinedStepsText.toString().trim()) {
+    return Array(7).fill(''); // Steps (Step), Step 1~6
+  }
+
+  const text = combinedStepsText.toString().trim();
+  const steps = Array(7).fill('');
+  
+  // 줄바꿈으로 분리하여 각 라인을 처리
+  const lines = text.split(/\n/).map(line => line.trim()).filter(line => line.length > 0);
+  
+  if (lines.length === 0) return steps;
+  
+  console.log('Combined Steps 분리 처리:', text);
+  console.log('라인들:', lines);
+  
+  // 각 라인을 순회하면서 처리
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    
+    // 숫자로 시작하는 패턴 찾기 (1., 2., 3. 등)
+    const numberMatch = line.match(/^(\d+)\.\s*(.*)$/);
+    
+    if (numberMatch) {
+      const stepNumber = parseInt(numberMatch[1]);
+      const stepContent = numberMatch[2].trim();
+      
+      console.log(`스텝 ${stepNumber} 발견:`, stepContent);
+      
+      if (stepNumber === 1) {
+        // 1번은 Steps (Step)에 할당
+        steps[0] = stepContent;
+        console.log('Steps (Step)에 할당:', stepContent);
+      } else if (stepNumber >= 2 && stepNumber <= 7) {
+        // 2번은 Step 1, 3번은 Step 2, ..., 7번은 Step 6
+        steps[stepNumber - 1] = stepContent;
+        console.log(`Step ${stepNumber - 1}에 할당:`, stepContent);
+      }
+    } else {
+      // 숫자로 시작하지 않는 경우는 무시하거나 첫 번째 빈 자리에 할당
+      if (steps[0] === '') {
+        steps[0] = line;
+        console.log('Steps (Step)에 할당 (번호 없음):', line);
+      }
+    }
+  }
+  
+  console.log('최종 분리 결과:', steps);
+  return steps;
+}
+
+function renderSplit() {
+  if (currentFileType !== 'xlsx') {
+    document.getElementById('splitTable').innerHTML = '<p style="color: #ff6b6b; padding: 20px;">⚠️ 분리 탭은 엑셀 파일(.xlsx)만 지원합니다. 엑셀 파일을 업로드해주세요.</p>';
+    return;
+  }
+
+  splitExport = [];
+  let html = `<table><thead><tr>
+    <th>Folder</th><th>Main Category</th><th>Sub Category</th><th>Detail Category</th>
+    <th>TC Summary</th><th>Precondition</th><th>Test Level</th>
+    <th>Expected Result</th><th>Steps (Step)</th>
+    <th>Step 1</th><th>Step 2</th><th>Step 3</th><th>Step 4</th><th>Step 5</th><th>Step 6</th>
+  </tr></thead><tbody>`;
+
+  globalJson.forEach(row => {
+    // Combined Steps 열의 값을 가져와서 분리
+    const combinedSteps = row['Combined Steps'] || '';
+    const steps = splitCombinedSteps(combinedSteps);
+    
+    const expectedResult = row['Expected Result (Expected Result)'] || row['Expected Result'] || '';
+
+    splitExport.push({
+      'Folder': row['Folder'],
+      'Main Category': row['Main Category'],
+      'Sub Category': row['Sub Category'],
+      'Detail Category': row['Detail Category'],
+      'TC Summary': row['TC Summary'],
+      'Precondition': row['Precondition'],
+      'Test Level': row['Test Level'],
+      'Expected Result': expectedResult,
+      'Steps (Step)': steps[0],
+      'Step 1': steps[1], 'Step 2': steps[2], 'Step 3': steps[3],
+      'Step 4': steps[4], 'Step 5': steps[5], 'Step 6': steps[6],
+    });
+
+    html += `<tr>
+      <td>${preserveLineBreaks(row['Folder'])}</td><td>${preserveLineBreaks(row['Main Category'])}</td>
+      <td>${preserveLineBreaks(row['Sub Category'])}</td><td>${preserveLineBreaks(row['Detail Category'])}</td>
+      <td>${preserveLineBreaks(row['TC Summary'])}</td><td>${preserveLineBreaks(row['Precondition'])}</td>
+      <td>${preserveLineBreaks(row['Test Level'])}</td><td>${preserveLineBreaks(expectedResult)}</td>
+      <td>${preserveLineBreaks(steps[0])}</td><td>${preserveLineBreaks(steps[1])}</td><td>${preserveLineBreaks(steps[2])}</td>
+      <td>${preserveLineBreaks(steps[3])}</td><td>${preserveLineBreaks(steps[4])}</td><td>${preserveLineBreaks(steps[5])}</td><td>${preserveLineBreaks(steps[6])}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('splitTable').innerHTML = html;
+}
+
+function downloadExcel(type) {
+  const wb = XLSX.utils.book_new();
+  let ws;
+  if (type === 'merged') {
+    if (mergedExport.length === 0) {
+      alert('병합 결과가 없습니다. CSV 파일을 업로드하고 병합을 실행해주세요.');
+      return;
+    }
+    ws = XLSX.utils.json_to_sheet(mergedExport);
+    XLSX.utils.book_append_sheet(wb, ws, 'Merged Result');
+    XLSX.writeFile(wb, 'merged_result.xlsx');
+  } else {
+    if (splitExport.length === 0) {
+      alert('분리 결과가 없습니다. 엑셀 파일을 업로드하고 분리를 실행해주세요.');
+      return;
+    }
+    ws = XLSX.utils.json_to_sheet(splitExport);
+    XLSX.utils.book_append_sheet(wb, ws, 'Split Result');
+    XLSX.writeFile(wb, 'split_result.xlsx');
+  }
+}
+</script>
+
+</body>
+</html>

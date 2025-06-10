@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <title>QA 통합 유틸리티</title>
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f4f4f4;
+    }
+    header {
+      display: flex;
+      background: #333;
+      padding: 10px;
+      justify-content: center;
+    }
+    .tab-button {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: bold;
+      margin: 0 10px;
+    }
+    .tab-button.active {
+      background: #00aaff;
+    }
+    .tab-content {
+      display: none;
+      padding: 20px;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .container {
+      max-width: 100%;
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .error {
+      color: red;
+      font-weight: bold;
+    }
+    table.dataTable td {
+      white-space: normal !important;
+      word-break: break-word !important;
+      vertical-align: top !important;
+      padding: 10px 12px !important;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    #resultTable_wrapper {
+      overflow-x: auto;
+    }
+    table {
+      width: 100% !important;
+      table-layout: auto !important;
+    }
+    #reportChart {
+      width: 500px !important;
+      height: 500px !important;
+      display: block;
+      margin: 0 auto;
+    }
+    input[type="text"] {
+      width: 400px;
+      height: 15px;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+<header>
+  <button class="tab-button active" data-tab="csv">CSV 파싱</button>
+  <button class="tab-button" data-tab="groovy">Groovy</button>
+  <button class="tab-button" data-tab="report">결과값 Report</button>
+  <button class="tab-button" data-tab="folder">폴더 생성기</button>
+</header>
+<main>
+  <div id="csv" class="tab-content active">
+    <div class="container">
+      <h2>🔪 WebUI.comment 기반 메타데이터 파서</h2>
+      <input type="file" id="csvFile" accept=".csv">
+      <button id="downloadBtn">⬇️ 엑셀 다운로드</button>
+      <button id="exampleDownloadBtn">📥 예시파일 다운로드</button>
+      <div id="error" class="error"></div>
+      <table id="resultTable" class="display" style="display:none;"></table>
+    </div>
+  </div>
+  <div id="groovy" class="tab-content">
+    <div class="container">
+      <h2>📄 Excel ➔ Katalon Test Case 변환기</h2>
+      <input type="file" id="excelFile" accept=".xlsx">
+      <button onclick="generateAllZip('tc')">전체 .tc ZIP 다운로드</button>
+      <button onclick="generateAllZip('groovy')">전체 .groovy ZIP 다운로드</button>
+      <div id="preview"></div>
+    </div>
+  </div>
+  <div id="report" class="tab-content">
+    <div class="container">
+      <h2>🧾 HTML 결과값 Report 뷰어</h2>
+      <input type="file" id="reportFileInput" accept=".html">
+      <div style="display: flex; gap: 20px; height: 90vh;">
+        <iframe id="reportPreview" style="width: 50%; height: 100%; border: 1px solid #ccc;"></iframe>
+        <div id="reportResult" style="width: 50%; padding: 1em; overflow-y: auto; background: white;">
+          <h2 style="color:#888">📋 파싱된 데이터가 이 영역에 표시됩니다</h2>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div id="folder" class="tab-content">
+    <div class="container">
+      <div style="display: flex; align-items: center;">
+        <h2 style="margin: 0 12px 0 0;">📂 폴더 ZIP 생성기 (엑셀 업로드 지원)</h2>
+        <button onclick="generateZip()">📦 ZIP 다운로드</button>
+      </div>
+      <input type="file" id="excelInput" accept=".xlsx, .xls"><br><br>
+      <div id="inputArea">
+        <input type="text" placeholder="폴더명 입력">
+      </div>
+      <button onclick="addInput()">+ 폴더 추가</button>
+    </div>
+  </div>
+</div>
+<script>
+// 결과값 Report 분석기
+document.getElementById('reportFileInput')?.addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const previewFrame = document.getElementById('reportPreview');
+  const resultDiv = document.getElementById('reportResult');
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const html = e.target.result;
+    previewFrame.srcdoc = html;
+
+    previewFrame.onload = function() {
+      try {
+        const doc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+        const x = path => doc.evaluate(path, doc, null, XPathResult.STRING_TYPE, null).stringValue.trim() || "-";
+
+        const name = x("/html/body/div[2]/div[2]/div[1]/div[1]");
+        const StartTime = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[1]/div/div/div[1]/div[2]");
+        const EndTime = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[1]/div/div/div[2]/div[2]");
+        const Duration = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[1]/div/div/div[3]/div[2]");
+        const total = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[1]/div[1]");
+        const pass = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[3]/div[1]");
+        const fail = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[4]/div[1]");
+        const error = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[5]/div[1]");
+        const incomplete = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[6]/div[1]");
+        const skipped = x("/html/body/div[2]/div[2]/div[3]/div/div[2]/div/div[2]/div/div/div[7]/div[1]");
+
+        const totalNum = parseInt(total) || 0;
+        const passNum = parseInt(pass) || 0;
+        const failNum = parseInt(fail) || 0;
+        const errorNum = parseInt(error) || 0;
+        const incompleteNum = parseInt(incomplete) || 0;
+        const skippedNum = parseInt(skipped) || 0;
+
+        function percent(n) {
+          if (!totalNum) return '0%';
+          return ((n / totalNum) * 100).toFixed(1) + '%';
+        }
+
+        resultDiv.innerHTML = `
+          <h2>📋 테스트 요약</h2>
+          <table style="width:100%; border-collapse: collapse;">
+            <tr><th align="left">Name : </th><td>${name}</td></tr>
+            <tr><th align="left">Start Time : </th><td>${StartTime}</td></tr>
+            <tr><th align="left">End Time : </th><td>${EndTime}</td></tr>
+            <tr><th align="left">Duration : </th><td>${Duration}</td></tr>
+            <tr><th align="left">전체 : </th><td>${totalNum}개 (100%)</td></tr>
+            <tr><th align="left">PASS : </th><td>${passNum}개 (${percent(passNum)})</td></tr>
+            <tr><th align="left">FAIL : </th><td>${failNum}개 (${percent(failNum)})</td></tr>
+            <tr><th align="left">ERROR : </th><td>${errorNum}개 (${percent(errorNum)})</td></tr>
+            <tr><th align="left">INCOMPLETE : </th><td>${incompleteNum}개 (${percent(incompleteNum)})</td></tr>
+            <tr><th align="left">SKIPPED : </th><td>${skippedNum}개 (${percent(skippedNum)})</td></tr>
+          </table>
+          <br><canvas id="reportChart"></canvas>`;
+
+        const values = [pass, fail, error, incomplete, skipped].map(v => parseInt(v) || 0);
+        const ctx = document.getElementById('reportChart').getContext('2d');
+        new Chart(ctx, {
+          type: 'pie',
+          data: {
+            labels: ["Pass", "Fail", "Error", "Incomplete", "Skipped"],
+            datasets: [{
+              data: values,
+              backgroundColor: ["#4caf50", "#f44336", "#ff9800", "#9c27b0", "#03a9f4"]
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { position: 'bottom' },
+              title: { display: true, text: '테스트 결과 분포' }
+            }
+          }
+        });
+      } catch (err) {
+        resultDiv.innerHTML = `<p style=\"color:red\">❌ 파싱 실패: ${err.message}</p>`;
+      }
+    };
+  };
+  reader.readAsText(file);
+});
+
+const buttons = document.querySelectorAll('.tab-button');
+const contents = document.querySelectorAll('.tab-content');
+let activeTab = 'csv';
+
+buttons.forEach(button => {
+  button.addEventListener('click', () => {
+    buttons.forEach(btn => btn.classList.remove('active'));
+    button.classList.add('active');
+
+    activeTab = button.dataset.tab;
+    contents.forEach(c => c.classList.remove('active'));
+    document.getElementById(activeTab).classList.add('active');
+  });
+});
+
+// CSV 파싱 로직
+let parsed = [];
+
+document.getElementById('csvFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const errorDiv = document.getElementById('error');
+  errorDiv.textContent = '';
+
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const csv = event.target.result;
+    const matches = [...csv.matchAll(/comment\(""[\r\n]+([\s\S]*?)[\r\n]+""\)/g)];
+    parsed = [];
+
+    for (let i = 0; i < matches.length; i++) {
+      const lines = matches[i][1].split(/\r?\n/);
+      const obj = { Index: i + 1 };
+      let currentKey = null;
+      let currentValue = [];
+
+      const pushCurrent = () => {
+        if (currentKey) {
+          obj[currentKey] = currentValue.join('<br>');
+          currentKey = null;
+          currentValue = [];
+        }
+      };
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (line.startsWith('=') || line === '') continue;
+
+        const parts = line.split(':');
+        if (parts.length >= 2) {
+          pushCurrent();
+          currentKey = parts[0].trim();
+          currentValue.push(parts.slice(1).join(':').trim());
+        } else if (currentKey) {
+          currentValue.push(line);
+        }
+      }
+      pushCurrent();
+      parsed.push(obj);
+    }
+
+    if (parsed.length === 0) {
+      errorDiv.textContent = '⚠️ 유용한 comment(""" ... """) 메타데이터 블록을 찾을 수 없습니다.';
+      return;
+    }
+
+    const allKeys = [...new Set(parsed.flatMap(o => Object.keys(o)))];
+    const data = parsed.map(row => allKeys.map(k => row[k] || ''));
+
+    const table = $('#resultTable');
+    table.show();
+    table.DataTable({
+      data: data,
+      columns: allKeys.map(h => ({ title: h })),
+      destroy: true,
+      scrollX: true,
+      pageLength: 10
+    });
+  };
+  reader.readAsText(file, 'UTF-8');
+});
+
+document.getElementById('downloadBtn').addEventListener('click', function() {
+  if (!parsed || parsed.length === 0) {
+    alert("다운로드할 데이터가 없습니다.");
+    return;
+  }
+
+  const converted = parsed.map(row => {
+    const newRow = {};
+    for (const key in row) {
+      const raw = row[key];
+      newRow[key] = typeof raw === 'string' ? raw.replace(/<br\s*\/?>/g, '\n') : raw;
+    }
+    return newRow;
+  });
+
+  const worksheet = XLSX.utils.json_to_sheet(converted);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Metadata");
+
+  const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([wbout], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "testcase_metadata.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+});
+
+document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
+  // 1. 헤더 정의
+  const headers = [
+    "Index",
+    "Test Level",
+    "Main Category",
+    "Sub Category",
+    "Detail Category",
+    "Summary",
+    "Precondition",
+    "Steps",
+    "Expected Result"
+  ];
+
+  // 2. 예시 데이터 (비워둠)
+  const data = [headers];
+
+  // 3. 시트 및 워크북 생성
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Testcase");
+
+  // 4. 파일로 변환 및 다운로드
+  const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const blob = new Blob([wbout], { type: "application/octet-stream" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "testcase_예시파일.xlsx";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+});
+
+// Groovy 탭 기능 삽입
+let testCases = [];
+
+function generateUUID() {
+  return URL.createObjectURL(new Blob()).split('/').pop();
+}
+
+function sanitizeFileName(name) {
+  return name.replace(/[\\/:*?"<>|]/g, '').trim();
+}
+
+document.getElementById('excelFile').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  testCases = [];
+  const container = document.getElementById('preview');
+  container.innerHTML = '';
+
+  const reader = new FileReader();
+  reader.onload = function (event) {
+    const data = new Uint8Array(event.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet);
+
+    json.forEach((row, idx) => {
+      const rawName = row['Summary'] || row['Name'] || `TestCase_${idx + 1}`;
+      const name = sanitizeFileName(rawName);
+      const numberedName = `${String(idx + 1).padStart(3, '0')}_${name}`;
+      const guid = generateUUID();
+
+      const fields = ['Test Level', 'Main Category', 'Sub Category', 'Detail Category', 'Summary', 'Precondition', 'Steps', 'Expected Result'];
+      const formatBlock = (label, value) => {
+        if (!value) return `${label}   :`;
+        return `${label}   : ${value.split(/\n|\\n/).map((l, i) => (i === 0 ? l : ' '.repeat(label.length + 5) + l)).join('\n')}`;
+      };
+
+      const comment = `=================== [Testcase] ===================\n\n` +
+        fields.map(f => formatBlock(f, row[f])).join('\n') +
+        `\n\n===================================================`;
+
+      const groovy = `import static com.kms.katalon.core.checkpoint.CheckpointFactory.findCheckpoint\n` +
+        `import static com.kms.katalon.core.testcase.TestCaseFactory.findTestCase\n` +
+        `import static com.kms.katalon.core.testdata.TestDataFactory.findTestData\n` +
+        `import static com.kms.katalon.core.testobject.ObjectRepository.findTestObject\n` +
+        `import static com.kms.katalon.core.testobject.ObjectRepository.findWindowsObject\n` +
+        `import com.kms.katalon.core.checkpoint.Checkpoint as Checkpoint\n` +
+        `import com.kms.katalon.core.cucumber.keyword.CucumberBuiltinKeywords as CucumberKW\n` +
+        `import com.kms.katalon.core.mobile.keyword.MobileBuiltInKeywords as Mobile\n` +
+        `import com.kms.katalon.core.model.FailureHandling as FailureHandling\n` +
+        `import com.kms.katalon.core.testcase.TestCase as TestCase\n` +
+        `import com.kms.katalon.core.testdata.TestData as TestData\n` +
+        `import com.kms.katalon.core.testng.keyword.TestNGBuiltinKeywords as TestNGKW\n` +
+        `import com.kms.katalon.core.testobject.TestObject as TestObject\n` +
+        `import com.kms.katalon.core.webservice.keyword.WSBuiltInKeywords as WS\n` +
+        `import com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords as WebUI\n` +
+        `import com.kms.katalon.core.windows.keyword.WindowsBuiltinKeywords as Windows\n` +
+        `import internal.GlobalVariable as GlobalVariable\n` +
+        `import org.openqa.selenium.Keys as Keys\n\n` +
+        `WebUI.comment(\""\"\n${comment}\n\""\")`;
+
+      const tc = `<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n` +
+        `<TestCaseEntity>\n` +
+        `   <description></description>\n` +
+        `   <name>${numberedName}</name>\n` +
+        `   <tag></tag>\n` +
+        `   <comment></comment>\n` +
+        `   <recordOption>OTHER</recordOption>\n` +
+        `   <testCaseGuid>${guid}</testCaseGuid>\n` +
+        `</TestCaseEntity>`;
+
+      testCases.push({ name: numberedName, tc, groovy });
+
+      const div = document.createElement('div');
+      div.innerHTML = `<strong>${numberedName}</strong><br>
+        <button onclick="downloadGroovyZip('${numberedName}')\">.groovy ZIP 다운로드</button>
+        <button onclick="downloadFile('${numberedName}', 'tc')\">.tc 다운로드</button><hr>`;
+      container.appendChild(div);
+    });
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+function downloadGroovyZip(name) {
+  const tc = testCases.find(t => t.name === name);
+  const zip = new JSZip();
+  const folder = zip.folder(tc.name);
+  folder.file(`${tc.name}.groovy`, tc.groovy);
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = `${tc.name}.zip`;
+    a.click();
+  });
+}
+
+function downloadFile(name, type) {
+  if (type === 'groovy') {
+    downloadGroovyZip(name);
+    return;
+  }
+  const tc = testCases.find(t => t.name === name);
+  const content = tc[type];
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.${type}`;
+  a.click();
+}
+
+function generateAllZip(type) {
+  const zip = new JSZip();
+  testCases.forEach(tc => {
+    if (type === 'groovy') {
+      const folder = zip.folder(tc.name);
+      folder.file(`${tc.name}.groovy`, tc.groovy);
+    } else {
+      zip.file(`${tc.name}.tc`, tc.tc);
+    }
+  });
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = `all_testcases_${type}.zip`;
+    a.click();
+  });
+}
+
+function addInput(value = '') {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = '폴더명 입력';
+  input.value = value;
+  document.getElementById('inputArea').appendChild(document.createElement('br'));
+  document.getElementById('inputArea').appendChild(input);
+}
+
+function generateZip() {
+  const zip = new JSZip();
+  const inputs = document.querySelectorAll('#inputArea input');
+  let folderAdded = false;
+
+  inputs.forEach(input => {
+    const folderName = input.value.trim();
+    if (folderName) {
+      zip.folder(folderName + '/');
+      folderAdded = true;
+    }
+  });
+
+  if (!folderAdded) {
+    alert("최소 1개 이상의 폴더명을 입력해주세요.");
+    return;
+  }
+
+  zip.generateAsync({ type: "blob" }).then(blob => {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "폴더모음.zip";
+    link.click();
+  });
+}
+
+document.getElementById('excelInput').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(event) {
+    const data = new Uint8Array(event.target.result);
+    const workbook = XLSX.read(data, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+
+    if (rows.length === 0) {
+      alert('엑셀 파일이 비어 있습니다.');
+      return;
+    }
+
+    // Summary 열 인덱스 찾기
+    const headerRow = rows[0];
+    const summaryIndex = headerRow.indexOf('Summary');
+    if (summaryIndex === -1) {
+      alert("'Summary'라는 열을 찾을 수 없습니다. 엑셀 파일을 확인해주세요.");
+      return;
+    }
+
+    // 기존 input 초기화
+    document.getElementById('inputArea').innerHTML = '';
+
+    // Summary가 있는 행 전체를 폴더명으로 지정
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const folderName = row[summaryIndex];
+      if (folderName) {
+        // 필요하다면 row 전체를 활용해 폴더명 생성 가능
+        addInput(folderName);
+      }
+    }
+
+    if (document.querySelectorAll('#inputArea input').length === 0) {
+      addInput('');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+});
+</script>
+</body>
+</html>
