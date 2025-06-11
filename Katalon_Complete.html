@@ -80,12 +80,63 @@
       padding: 8px 12px;
       border-radius: 8px;
     }
+    /* TC+Script 탭 전용 스타일 */
+    .tc-script-container {
+      display: flex;
+      gap: 20px;
+      height: 70vh;
+    }
+    .tc-script-left {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      background: #f9f9f9;
+    }
+    .tc-script-right {
+      flex: 1;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 15px;
+      background: #f9f9f9;
+    }
+    .tc-script-output {
+      background: white;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 10px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+      flex-wrap: wrap;
+    }
+    .button-group button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .button-group button:hover {
+      background: #0056b3;
+    }
   </style>
 </head>
 <body>
 <header>
   <button class="tab-button active" data-tab="csv">CSV 파싱</button>
   <button class="tab-button" data-tab="groovy">Groovy</button>
+  <button class="tab-button" data-tab="tcscript">TC+Script</button>
   <button class="tab-button" data-tab="report">결과값 Report</button>
   <button class="tab-button" data-tab="folder">폴더 생성기</button>
 </header>
@@ -107,6 +158,33 @@
       <button onclick="generateAllZip('tc')">전체 .tc ZIP 다운로드</button>
       <button onclick="generateAllZip('groovy')">전체 .groovy ZIP 다운로드</button>
       <div id="preview"></div>
+    </div>
+  </div>
+  <div id="tcscript" class="tab-content">
+    <div class="container">
+      <h2>🔧 TC+Script 통합 생성기</h2>
+      <input type="file" id="tcScriptExcelFile" accept=".xlsx,.xls,.csv">
+      <div class="button-group">
+        <button onclick="generateTCScript()">📋 TC+Script 생성</button>
+        <button onclick="downloadTCOnly()">📄 TC만 다운로드</button>
+        <button onclick="downloadScriptOnly()">🔧 Script만 다운로드</button>
+        <button onclick="downloadMergedFiles()">📦 병합 파일 다운로드</button>
+        <button onclick="clearTCScriptOutput()">🗑️ 결과 초기화</button>
+      </div>
+      <div class="tc-script-container">
+        <div class="tc-script-left">
+          <h3>📊 매핑 결과</h3>
+          <div id="tcScriptMappingResult" class="tc-script-output">
+            엑셀 파일을 업로드하고 TC+Script 생성을 클릭하면 매핑 결과가 여기에 표시됩니다.
+          </div>
+        </div>
+        <div class="tc-script-right">
+          <h3>📄 생성된 스크립트</h3>
+          <div id="tcScriptGeneratedCode" class="tc-script-output">
+            생성된 Katalon 스크립트가 여기에 표시됩니다.
+          </div>
+        </div>
+      </div>
     </div>
   </div>
   <div id="report" class="tab-content">
@@ -134,8 +212,626 @@
       <button onclick="addInput()">+ 폴더 추가</button>
     </div>
   </div>
-</div>
+</main>
 <script>
+// ======= TC+Script 함수들을 최우선으로 정의 =======
+var tcScriptData = [];
+var tcScriptResults = [];
+
+function generateTCScript() {
+  console.log('✅ generateTCScript 함수 호출 성공!');
+  console.log('현재 tcScriptData:', tcScriptData);
+  console.log('tcScriptData 길이:', tcScriptData ? tcScriptData.length : 'undefined');
+  
+  // 디버깅 정보 추가
+  if (tcScriptData) {
+    console.log('첫 번째 행:', tcScriptData[0]);
+    console.log('데이터 타입:', typeof tcScriptData);
+    console.log('배열인가?', Array.isArray(tcScriptData));
+  }
+  
+  // 실제 업로드된 데이터가 있는지 확인
+  if (!tcScriptData || !Array.isArray(tcScriptData) || tcScriptData.length === 0) {
+    console.error('❌ tcScriptData 문제:', {
+      exists: !!tcScriptData,
+      isArray: Array.isArray(tcScriptData),
+      length: tcScriptData ? tcScriptData.length : 'N/A'
+    });
+    
+    alert('⚠️ 데이터 로딩 문제가 발생했습니다!\n\n🔧 해결 방법:\n1. 페이지를 새로고침하세요\n2. 엑셀 파일을 다시 업로드하세요\n3. F12 → Console에서 오류를 확인하세요');
+    return;
+  }
+  
+  console.log(`📊 업로드된 데이터: ${tcScriptData.length}개 행`);
+  console.log('첫 번째 행 데이터:', tcScriptData[0]);
+  
+  // 실제 엑셀 데이터로 매핑 수행
+  processRealExcelData();
+}
+
+// 실제 엑셀 데이터 처리 함수 (피드백 강화)
+function processRealExcelData() {
+  console.log('🔄 실제 엑셀 데이터 처리 시작...');
+  
+  // 먼저 컬럼 매핑 분석
+  const columnAnalysis = analyzeColumns();
+  
+  let mappingResults = '📊 컬럼 매핑 분석 결과:\n\n';
+  mappingResults += columnAnalysis.report + '\n';
+  mappingResults += '=' + '='.repeat(50) + '\n\n';
+  mappingResults += '🔄 개별 행 처리 결과:\n\n';
+  
+  let generatedCode = '📝 생성된 Katalon 스크립트:\n\n';
+  let successCount = 0;
+  let totalCount = tcScriptData.length;
+  
+  tcScriptData.forEach((row, idx) => {
+    console.log(`처리 중 ${idx + 1}번째 행:`, row);
+    
+    // 강화된 컬럼 추출
+    const extractResult = extractWithFeedback(row, columnAnalysis.mapping);
+    const testName = extractResult.summary || `TestCase_${idx + 1}`;
+    
+    // 키워드 매핑 수행
+    const mappingResult = performKeywordMapping(
+      extractResult.summary, 
+      extractResult.precondition, 
+      extractResult.expectedResult
+    );
+    
+    // 상세 피드백 생성
+    mappingResults += `📋 [${idx + 1}] ${testName}\n`;
+    mappingResults += generateDetailedFeedback(extractResult, mappingResult);
+    mappingResults += '\n';
+    
+    generatedCode += `// ========== [${idx + 1}] ${testName} ==========\n`;
+    generatedCode += `${mappingResult.script}\n\n`;
+    
+    if (mappingResult.hasValidMapping) successCount++;
+  });
+  
+  // 요약 통계 추가
+  const summary = generateProcessingSummary(successCount, totalCount, columnAnalysis);
+  mappingResults = summary + '\n' + mappingResults;
+  
+  // 결과 표시
+  displayResults(mappingResults, generatedCode);
+}
+
+// 컬럼 분석 함수
+function analyzeColumns() {
+  if (!tcScriptData || tcScriptData.length === 0) {
+    return { mapping: {}, report: '❌ 분석할 데이터가 없습니다.' };
+  }
+  
+  const firstRow = tcScriptData[0];
+  const allColumns = Object.keys(firstRow);
+  
+  console.log('🔍 감지된 모든 컬럼:', allColumns);
+  
+  const analysis = {
+    summary: findBestMatch(allColumns, ['Summary', 'summary', '요약', '테스트명', 'Test Name', 'TestName', '제목']),
+    precondition: findBestMatch(allColumns, ['Precondition', 'precondition', '전제조건', '사전조건', 'Pre-condition', 'PreCondition']),
+    expectedResult: findBestMatch(allColumns, ['Expected Result', 'expected result', 'ExpectedResult', '예상결과', '기대결과', 'Expected', '결과'])
+  };
+  
+  // 매핑 보고서 생성
+  let report = '🔍 컬럼 매핑 분석:\n';
+  report += `📁 전체 컬럼 수: ${allColumns.length}개\n`;
+  report += `📋 감지된 컬럼: ${allColumns.join(', ')}\n\n`;
+  
+  report += '🎯 매핑 결과:\n';
+  report += `Summary     : ${analysis.summary.status} ${analysis.summary.column ? `→ "${analysis.summary.column}"` : ''}\n`;
+  report += `Precondition: ${analysis.precondition.status} ${analysis.precondition.column ? `→ "${analysis.precondition.column}"` : ''}\n`;
+  report += `Expected    : ${analysis.expectedResult.status} ${analysis.expectedResult.column ? `→ "${analysis.expectedResult.column}"` : ''}\n`;
+  
+  // 매핑되지 않은 컬럼 표시
+  const unmappedColumns = allColumns.filter(col => 
+    col !== analysis.summary.column && 
+    col !== analysis.precondition.column && 
+    col !== analysis.expectedResult.column
+  );
+  
+  if (unmappedColumns.length > 0) {
+    report += `\n📝 매핑되지 않은 컬럼: ${unmappedColumns.join(', ')}`;
+  }
+  
+  return {
+    mapping: {
+      summary: analysis.summary.column,
+      precondition: analysis.precondition.column,
+      expectedResult: analysis.expectedResult.column
+    },
+    report: report,
+    unmapped: unmappedColumns
+  };
+}
+
+// 최적 매핑 찾기
+function findBestMatch(availableColumns, targetKeywords) {
+  // 정확히 일치하는 컬럼 찾기
+  for (let keyword of targetKeywords) {
+    for (let column of availableColumns) {
+      if (column === keyword) {
+        return { column: column, status: '✅ 정확 매핑', confidence: 100 };
+      }
+    }
+  }
+  
+  // 부분 일치하는 컬럼 찾기
+  for (let keyword of targetKeywords) {
+    for (let column of availableColumns) {
+      if (column.toLowerCase().includes(keyword.toLowerCase()) || 
+          keyword.toLowerCase().includes(column.toLowerCase())) {
+        return { column: column, status: '⚠️ 유사 매핑', confidence: 70 };
+      }
+    }
+  }
+  
+  return { column: null, status: '❌ 매핑 실패', confidence: 0 };
+}
+
+// 강화된 값 추출
+function extractWithFeedback(row, columnMapping) {
+  const result = {
+    summary: '',
+    precondition: '',
+    expectedResult: '',
+    feedback: []
+  };
+  
+  // Summary 추출
+  if (columnMapping.summary) {
+    result.summary = String(row[columnMapping.summary] || '').trim();
+    result.feedback.push(`Summary: "${columnMapping.summary}" → "${result.summary.substring(0, 30)}${result.summary.length > 30 ? '...' : ''}"`);
+  } else {
+    result.feedback.push('Summary: ❌ 매핑된 컬럼 없음');
+  }
+  
+  // Precondition 추출
+  if (columnMapping.precondition) {
+    result.precondition = String(row[columnMapping.precondition] || '').trim();
+    result.feedback.push(`Precondition: "${columnMapping.precondition}" → "${result.precondition.substring(0, 30)}${result.precondition.length > 30 ? '...' : ''}"`);
+  } else {
+    result.feedback.push('Precondition: ❌ 매핑된 컬럼 없음');
+  }
+  
+  // Expected Result 추출
+  if (columnMapping.expectedResult) {
+    result.expectedResult = String(row[columnMapping.expectedResult] || '').trim();
+    result.feedback.push(`Expected: "${columnMapping.expectedResult}" → "${result.expectedResult.substring(0, 30)}${result.expectedResult.length > 30 ? '...' : ''}"`);
+  } else {
+    result.feedback.push('Expected: ❌ 매핑된 컬럼 없음');
+  }
+  
+  return result;
+}
+
+// 상세 피드백 생성
+function generateDetailedFeedback(extractResult, mappingResult) {
+  let feedback = '';
+  
+  // 데이터 추출 피드백
+  feedback += '  📊 데이터 추출:\n';
+  extractResult.feedback.forEach(fb => {
+    feedback += `    ${fb}\n`;
+  });
+  
+  // 키워드 매핑 피드백
+  feedback += '  🔍 키워드 매핑:\n';
+  if (mappingResult.hasValidMapping) {
+    feedback += `    ✅ 성공: ${mappingResult.successCount || 1}개 키워드 매핑됨\n`;
+  } else {
+    feedback += '    ❌ 실패: 매핑 가능한 키워드 없음\n';
+    feedback += '    💡 지원 키워드: 클릭, 입력, 확인, 이동, 선택, 체크\n';
+  }
+  
+  return feedback;
+}
+
+// 처리 요약 생성
+function generateProcessingSummary(successCount, totalCount, columnAnalysis) {
+  const successRate = totalCount > 0 ? Math.round((successCount / totalCount) * 100) : 0;
+  
+  let summary = '📈 처리 요약 보고서\n';
+  summary += '=' + '='.repeat(30) + '\n';
+  summary += `✅ 성공: ${successCount}/${totalCount} (${successRate}%)\n`;
+  summary += `❌ 실패: ${totalCount - successCount}/${totalCount} (${100 - successRate}%)\n`;
+  
+  // 매핑 품질 평가
+  const mappedColumns = Object.values(columnAnalysis.mapping).filter(col => col).length;
+  const totalRequiredColumns = 3; // Summary, Precondition, Expected Result
+  const mappingQuality = Math.round((mappedColumns / totalRequiredColumns) * 100);
+  
+  summary += `🎯 컬럼 매핑 품질: ${mappingQuality}% (${mappedColumns}/${totalRequiredColumns})\n`;
+  
+  if (successRate < 50) {
+    summary += '\n⚠️ 개선 제안:\n';
+    summary += '   • 엑셀 컬럼명을 표준명으로 변경 (Summary, Precondition, Expected Result)\n';
+    summary += '   • 키워드가 포함된 명확한 텍스트 작성\n';
+  }
+  
+  return summary;
+}
+
+// 다양한 컬럼명으로 값 추출
+function extractColumnValue(row, possibleColumns) {
+  for (let colName of possibleColumns) {
+    if (row[colName] !== undefined && row[colName] !== null && row[colName] !== '') {
+      return String(row[colName]).trim();
+    }
+  }
+  return '';
+}
+
+// 키워드 매핑 수행 (강화된 피드백)
+function performKeywordMapping(summary, precondition, expectedResult) {
+  let mapping = '';
+  let script = '';
+  let hasValidMapping = false;
+  let successCount = 0;
+  
+  // Summary 처리
+  if (summary) {
+    const summaryResult = mapKeywordWithFeedback(summary, 'action');
+    mapping += summaryResult.feedback;
+    script += summaryResult.script;
+    if (summaryResult.success) {
+      hasValidMapping = true;
+      successCount++;
+    }
+  } else {
+    mapping += '[Summary] ❌ 데이터 없음\n';
+  }
+  
+  // Precondition 처리  
+  if (precondition) {
+    const preconditionResult = mapKeywordWithFeedback(precondition, 'setup');
+    mapping += preconditionResult.feedback;
+    script = preconditionResult.script + '\n' + script; // 앞쪽에 추가
+    if (preconditionResult.success) {
+      hasValidMapping = true;
+      successCount++;
+    }
+  } else {
+    mapping += '[Precondition] ❌ 데이터 없음\n';
+  }
+  
+  // Expected Result 처리
+  if (expectedResult) {
+    const expectedResultMap = mapKeywordWithFeedback(expectedResult, 'verify');
+    mapping += expectedResultMap.feedback;
+    script += '\n' + expectedResultMap.script;
+    if (expectedResultMap.success) {
+      hasValidMapping = true;
+      successCount++;
+    }
+  } else {
+    mapping += '[Expected Result] ❌ 데이터 없음\n';
+  }
+  
+  // 전체 매핑 결과 요약
+  if (!hasValidMapping) {
+    mapping += '\n💡 개선 제안:\n';
+    mapping += '   • 키워드 포함: 클릭, 입력, 확인, 이동 등\n';
+    mapping += '   • 명확한 동작 표현: "로그인 버튼 클릭"\n';
+    script = '// ❌ 자동 매핑 실패\n// TODO: 수동으로 스크립트를 작성해주세요.\n// 지원 키워드: 클릭, 더블클릭, 입력, 확인, 이동, 선택, 체크, 대기, 스크롤';
+  }
+  
+  return { 
+    mapping, 
+    script, 
+    hasValidMapping, 
+    successCount 
+  };
+}
+
+// 개별 키워드 매핑 (강화된 피드백)
+function mapKeywordWithFeedback(text, type) {
+  const textLower = text.toLowerCase();
+  let feedback = '';
+  let script = '';
+  let success = false;
+  
+  feedback += `[${getTypeLabel(type)}] "${text}"\n`;
+  
+  // 키워드 매핑 테이블 (우선순위 순)
+  const keywordMappings = [
+    // 클릭 관련 (구체적인 것부터)
+    { keywords: ['더블클릭', 'double'], script: 'WebUI.doubleClick(findTestObject("Object/TargetButton"))', type: 'action', desc: '더블클릭' },
+    { keywords: ['우클릭', 'right'], script: 'WebUI.rightClick(findTestObject("Object/TargetButton"))', type: 'action', desc: '우클릭' },
+    { keywords: ['클릭', 'click'], script: 'WebUI.click(findTestObject("Object/TargetButton"))', type: 'action', desc: '클릭' },
+    
+    // 입력 관련
+    { keywords: ['패스워드입력', '비밀번호입력', '암호입력'], script: 'WebUI.setEncryptedText(findTestObject("Object/PasswordField"), "TODO_PASSWORD")', type: 'action', desc: '패스워드 입력' },
+    { keywords: ['텍스트입력', '문자입력'], script: 'WebUI.setText(findTestObject("Object/InputField"), "TODO_TEXT")', type: 'action', desc: '텍스트 입력' },
+    { keywords: ['입력', 'input'], script: 'WebUI.setText(findTestObject("Object/InputField"), "TODO_TEXT")', type: 'action', desc: '입력' },
+    
+    // 검증 관련
+    { keywords: ['텍스트확인', '문자확인'], script: 'WebUI.verifyElementText(findTestObject("Object/TextElement"), "TODO_EXPECTED_TEXT")', type: 'verify', desc: '텍스트 확인' },
+    { keywords: ['존재확인', '요소존재'], script: 'WebUI.verifyElementPresent(findTestObject("Object/TargetElement"), 10)', type: 'verify', desc: '요소 존재 확인' },
+    { keywords: ['노출', '표시', '보임'], script: 'WebUI.verifyElementVisible(findTestObject("Object/TargetElement"), 10)', type: 'verify', desc: '요소 가시성 확인' },
+    { keywords: ['확인', 'verify'], script: 'WebUI.verifyElementVisible(findTestObject("Object/TargetElement"), 10)', type: 'verify', desc: '확인' },
+    
+    // 네비게이션
+    { keywords: ['페이지이동', 'url이동'], script: 'WebUI.navigateToUrl("TODO_TARGET_URL")', type: 'setup', desc: '페이지 이동' },
+    { keywords: ['이동', 'navigate'], script: 'WebUI.navigateToUrl("TODO_TARGET_URL")', type: 'setup', desc: '이동' },
+    { keywords: ['새창', 'newwindow'], script: 'WebUI.openBrowser("")', type: 'setup', desc: '새창 열기' },
+    
+    // 기타
+    { keywords: ['선택', 'select'], script: 'WebUI.selectOptionByLabel(findTestObject("Object/Dropdown"), "TODO_OPTION", false)', type: 'action', desc: '선택' },
+    { keywords: ['체크', 'check'], script: 'WebUI.check(findTestObject("Object/Checkbox"))', type: 'action', desc: '체크' },
+    { keywords: ['대기', 'wait'], script: 'WebUI.delay(3)', type: 'action', desc: '대기' },
+    { keywords: ['스크롤', 'scroll'], script: 'WebUI.scrollToElement(findTestObject("Object/TargetElement"), 10)', type: 'action', desc: '스크롤' }
+  ];
+  
+  // 키워드 매칭 시도
+  for (let mapping of keywordMappings) {
+    if (type === 'any' || mapping.type === type) {
+      for (let keyword of mapping.keywords) {
+        if (textLower.includes(keyword.toLowerCase())) {
+          feedback += `  → ✅ "${keyword}" 키워드 감지 → ${mapping.desc}\n`;
+          script += mapping.script + '\n';
+          success = true;
+          return { feedback, script, success };
+        }
+      }
+    }
+  }
+  
+  // 매핑 실패시 상세 분석
+  feedback += '  → ❌ 매핑 실패\n';
+  feedback += '  🔍 분석:\n';
+  
+  // 유사 키워드 제안
+  const suggestions = findSimilarKeywords(textLower, keywordMappings, type);
+  if (suggestions.length > 0) {
+    feedback += `  💡 유사 키워드: ${suggestions.join(', ')}\n`;
+  } else {
+    feedback += `  💡 지원 키워드 (${getTypeLabel(type)}): `;
+    const typeKeywords = keywordMappings
+      .filter(m => m.type === type)
+      .slice(0, 3)
+      .map(m => m.keywords[0]);
+    feedback += `${typeKeywords.join(', ')}\n`;
+  }
+  
+  script += `// TODO: "${text}" → 수동 매핑 필요\n`;
+  
+  return { feedback, script, success };
+}
+
+// 타입 라벨 반환
+function getTypeLabel(type) {
+  const labels = {
+    'action': 'Action',
+    'setup': 'Setup', 
+    'verify': 'Verify',
+    'any': 'Any'
+  };
+  return labels[type] || type;
+}
+
+// 유사 키워드 찾기
+function findSimilarKeywords(inputText, mappings, type) {
+  const suggestions = [];
+  
+  for (let mapping of mappings) {
+    if (type === 'any' || mapping.type === type) {
+      for (let keyword of mapping.keywords) {
+        // 부분 일치나 유사도 체크
+        if (keyword.includes(inputText.substring(0, 2)) || 
+            inputText.includes(keyword.substring(0, 2))) {
+          suggestions.push(keyword);
+          if (suggestions.length >= 3) break;
+        }
+      }
+      if (suggestions.length >= 3) break;
+    }
+  }
+  
+  return [...new Set(suggestions)]; // 중복 제거
+}
+
+// 개별 키워드 매핑
+function mapKeyword(text, type) {
+  const textLower = text.toLowerCase();
+  let mapping = '';
+  let script = '';
+  let success = false;
+  
+  // 키워드 매핑 테이블
+  const keywordMappings = {
+    // 클릭 관련
+    '더블클릭': { script: 'WebUI.doubleClick(findTestObject("Object/TargetButton"))', type: 'action' },
+    '우클릭': { script: 'WebUI.rightClick(findTestObject("Object/TargetButton"))', type: 'action' },
+    '클릭': { script: 'WebUI.click(findTestObject("Object/TargetButton"))', type: 'action' },
+    
+    // 입력 관련
+    '패스워드입력': { script: 'WebUI.setEncryptedText(findTestObject("Object/PasswordField"), "TODO_PASSWORD")', type: 'action' },
+    '비밀번호입력': { script: 'WebUI.setEncryptedText(findTestObject("Object/PasswordField"), "TODO_PASSWORD")', type: 'action' },
+    '텍스트입력': { script: 'WebUI.setText(findTestObject("Object/InputField"), "TODO_TEXT")', type: 'action' },
+    '입력': { script: 'WebUI.setText(findTestObject("Object/InputField"), "TODO_TEXT")', type: 'action' },
+    
+    // 검증 관련
+    '텍스트확인': { script: 'WebUI.verifyElementText(findTestObject("Object/TextElement"), "TODO_EXPECTED_TEXT")', type: 'verify' },
+    '존재확인': { script: 'WebUI.verifyElementPresent(findTestObject("Object/TargetElement"), 10)', type: 'verify' },
+    '노출': { script: 'WebUI.verifyElementVisible(findTestObject("Object/TargetElement"), 10)', type: 'verify' },
+    '확인': { script: 'WebUI.verifyElementVisible(findTestObject("Object/TargetElement"), 10)', type: 'verify' },
+    
+    // 네비게이션
+    '페이지이동': { script: 'WebUI.navigateToUrl("TODO_TARGET_URL")', type: 'setup' },
+    '이동': { script: 'WebUI.navigateToUrl("TODO_TARGET_URL")', type: 'setup' },
+    '새창': { script: 'WebUI.openBrowser("")', type: 'setup' },
+    
+    // 기타
+    '선택': { script: 'WebUI.selectOptionByLabel(findTestObject("Object/Dropdown"), "TODO_OPTION", false)', type: 'action' },
+    '체크': { script: 'WebUI.check(findTestObject("Object/Checkbox"))', type: 'action' },
+    '대기': { script: 'WebUI.delay(3)', type: 'action' },
+    '스크롤': { script: 'WebUI.scrollToElement(findTestObject("Object/TargetElement"), 10)', type: 'action' }
+  };
+  
+  // 키워드 매칭 (우선순위 순서대로)
+  for (let keyword in keywordMappings) {
+    if (textLower.includes(keyword)) {
+      const mappingData = keywordMappings[keyword];
+      if (type === 'any' || mappingData.type === type) {
+        mapping += `  → ✅ "${keyword}" 키워드 감지\n`;
+        script += mappingData.script + '\n';
+        success = true;
+        break;
+      }
+    }
+  }
+  
+  // 매핑 실패
+  if (!success) {
+    mapping += `  → ❌ 매핑 가능한 키워드 없음\n`;
+    script += `// TODO: "${text}" 매핑 필요\n`;
+  }
+  
+  return { mapping, script, success };
+}
+
+// 결과 표시
+function displayResults(mappingResults, generatedCode) {
+  const mappingDiv = document.getElementById('tcScriptMappingResult');
+  const codeDiv = document.getElementById('tcScriptGeneratedCode');
+  
+  if (mappingDiv) {
+    mappingDiv.textContent = mappingResults;
+    console.log('✅ 매핑 결과 표시 완료');
+  } else {
+    console.error('❌ tcScriptMappingResult div 없음');
+  }
+  
+  if (codeDiv) {
+    codeDiv.textContent = generatedCode;
+    console.log('✅ 코드 결과 표시 완료');
+  } else {
+    console.error('❌ tcScriptGeneratedCode div 없음');
+  }
+}
+
+function downloadTCOnly() {
+  alert('TC만 다운로드 함수 호출됨');
+}
+
+function downloadScriptOnly() {
+  alert('Script만 다운로드 함수 호출됨');
+}
+
+function downloadMergedFiles() {
+  alert('병합 파일 다운로드 함수 호출됨');
+}
+
+function clearTCScriptOutput() {
+  console.log('clearTCScriptOutput 함수 호출됨');
+  document.getElementById('tcScriptMappingResult').textContent = '엑셀 파일을 업로드하고 TC+Script 생성을 클릭하면 매핑 결과가 여기에 표시됩니다.';
+  document.getElementById('tcScriptGeneratedCode').textContent = '생성된 Katalon 스크립트가 여기에 표시됩니다.';
+  tcScriptData = [];
+  tcScriptResults = [];
+}
+
+// 매핑 테스트 함수
+function testMapping() {
+  console.log('🧪 매핑 테스트 시작...');
+  
+  // 테스트 데이터
+  const testData = [
+    {
+      Summary: "로그인 버튼 클릭",
+      Precondition: "로그인 페이지 접속",
+      "Expected Result": "메인 페이지 이동"
+    },
+    {
+      Summary: "사용자명 입력", 
+      Precondition: "",
+      "Expected Result": "사용자명 표시 확인"
+    },
+    {
+      Summary: "검색 버튼 더블클릭",
+      Precondition: "검색 페이지",
+      "Expected Result": "검색 결과 노출"
+    }
+  ];
+  
+  let mappingResults = '🧪 매핑 테스트 결과:\n\n';
+  let generatedCode = '🧪 생성된 테스트 스크립트:\n\n';
+  
+  testData.forEach((row, idx) => {
+    console.log(`테스트 ${idx + 1}:`, row);
+    
+    const summary = row.Summary || '';
+    const precondition = row.Precondition || '';
+    const expectedResult = row['Expected Result'] || '';
+    
+    // 간단한 키워드 매핑 테스트
+    const result = simpleKeywordTest(summary, precondition, expectedResult);
+    
+    mappingResults += `📋 [${idx + 1}] ${summary}\n`;
+    mappingResults += `${result.mapping}\n\n`;
+    
+    generatedCode += `// ========== 테스트 ${idx + 1} ==========\n`;
+    generatedCode += `${result.script}\n\n`;
+  });
+  
+  // 결과 표시
+  const mappingDiv = document.getElementById('tcScriptMappingResult');
+  const codeDiv = document.getElementById('tcScriptGeneratedCode');
+  
+  if (mappingDiv) {
+    mappingDiv.textContent = mappingResults;
+    console.log('✅ 매핑 결과 표시 완료');
+  }
+  
+  if (codeDiv) {
+    codeDiv.textContent = generatedCode;
+    console.log('✅ 코드 결과 표시 완료');
+  }
+}
+
+// 간단한 키워드 테스트
+function simpleKeywordTest(summary, precondition, expectedResult) {
+  const summaryLower = summary.toLowerCase();
+  let mapping = '';
+  let script = '';
+  
+  // Summary 키워드 테스트
+  mapping += `[Summary] ${summary}\n`;
+  
+  if (summaryLower.includes('더블클릭')) {
+    mapping += '  → ✅ "더블클릭" 키워드 감지\n';
+    script += 'WebUI.doubleClick(findTestObject("Object/TargetButton"))\n';
+  } else if (summaryLower.includes('클릭')) {
+    mapping += '  → ✅ "클릭" 키워드 감지\n';
+    script += 'WebUI.click(findTestObject("Object/TargetButton"))\n';
+  } else if (summaryLower.includes('입력')) {
+    mapping += '  → ✅ "입력" 키워드 감지\n';
+    script += 'WebUI.setText(findTestObject("Object/InputField"), "testValue")\n';
+  } else {
+    mapping += '  → ❌ 매핑 가능한 키워드 없음\n';
+    script += '// ❌ 매핑 실패: 지원되지 않는 액션\n';
+  }
+  
+  // Expected Result 키워드 테스트
+  if (expectedResult) {
+    mapping += `[Expected Result] ${expectedResult}\n`;
+    const expectedLower = expectedResult.toLowerCase();
+    
+    if (expectedLower.includes('확인') || expectedLower.includes('노출')) {
+      mapping += '  → ✅ "확인/노출" 키워드 감지\n';
+      script += 'WebUI.verifyElementVisible(findTestObject("Object/ResultElement"), 10)\n';
+    } else if (expectedLower.includes('이동')) {
+      mapping += '  → ✅ "이동" 키워드 감지\n';
+      script += 'WebUI.verifyMatch(WebUI.getUrl(), ".*expectedPage.*", true)\n';
+    }
+  }
+  
+  return { mapping, script };
+}
+
+// ======= 기존 코드들 =======
 // 결과값 Report 분석기
 document.getElementById('reportFileInput')?.addEventListener('change', function(e) {
   const file = e.target.files[0];
@@ -212,6 +908,870 @@ document.getElementById('reportFileInput')?.addEventListener('change', function(
             }
           }
         });
+
+// TC+Script 탭 전용 변수 및 함수
+let tcScriptData = [];
+let tcScriptResults = [];
+
+// 전역 함수로 다시 정의 (테스트용)
+window.generateTCScript = function() {
+  console.log('✅ generateTCScript 함수 호출 성공!');
+  alert('✅ 함수 호출 성공! 이제 매핑 테스트를 진행합니다.');
+  
+  // 테스트 데이터로 매핑 확인
+  testMapping();
+};
+
+window.downloadTCOnly = function() {
+  alert('TC만 다운로드 함수 호출됨');
+};
+
+window.downloadScriptOnly = function() {
+  alert('Script만 다운로드 함수 호출됨');
+};
+
+window.downloadMergedFiles = function() {
+  alert('병합 파일 다운로드 함수 호출됨');
+};
+
+window.clearTCScriptOutput = function() {
+  console.log('clearTCScriptOutput 함수 호출됨');
+  document.getElementById('tcScriptMappingResult').textContent = '엑셀 파일을 업로드하고 TC+Script 생성을 클릭하면 매핑 결과가 여기에 표시됩니다.';
+  document.getElementById('tcScriptGeneratedCode').textContent = '생성된 Katalon 스크립트가 여기에 표시됩니다.';
+  tcScriptData = [];
+  tcScriptResults = [];
+};
+
+// 매핑 테스트 함수
+function testMapping() {
+  console.log('🧪 매핑 테스트 시작...');
+  
+  // 테스트 데이터
+  const testData = [
+    {
+      Summary: "로그인 버튼 클릭",
+      Precondition: "로그인 페이지 접속",
+      "Expected Result": "메인 페이지 이동"
+    },
+    {
+      Summary: "사용자명 입력", 
+      Precondition: "",
+      "Expected Result": "사용자명 표시 확인"
+    },
+    {
+      Summary: "검색 버튼 더블클릭",
+      Precondition: "검색 페이지",
+      "Expected Result": "검색 결과 노출"
+    }
+  ];
+  
+  let mappingResults = '🧪 매핑 테스트 결과:\n\n';
+  let generatedCode = '🧪 생성된 테스트 스크립트:\n\n';
+  
+  testData.forEach((row, idx) => {
+    console.log(`테스트 ${idx + 1}:`, row);
+    
+    const summary = row.Summary || '';
+    const precondition = row.Precondition || '';
+    const expectedResult = row['Expected Result'] || '';
+    
+    console.log(`Summary: "${summary}"`);
+    console.log(`Precondition: "${precondition}"`);
+    console.log(`Expected: "${expectedResult}"`);
+    
+    // 간단한 키워드 매핑 테스트
+    const result = simpleKeywordTest(summary, precondition, expectedResult);
+    
+    mappingResults += `📋 [${idx + 1}] ${summary}\n`;
+    mappingResults += `${result.mapping}\n\n`;
+    
+    generatedCode += `// ========== 테스트 ${idx + 1} ==========\n`;
+    generatedCode += `${result.script}\n\n`;
+  });
+  
+  // 결과 표시
+  const mappingDiv = document.getElementById('tcScriptMappingResult');
+  const codeDiv = document.getElementById('tcScriptGeneratedCode');
+  
+  if (mappingDiv) {
+    mappingDiv.textContent = mappingResults;
+    console.log('✅ 매핑 결과 표시 완료');
+  } else {
+    console.error('❌ tcScriptMappingResult div 없음');
+  }
+  
+  if (codeDiv) {
+    codeDiv.textContent = generatedCode;
+    console.log('✅ 코드 결과 표시 완료');
+  } else {
+    console.error('❌ tcScriptGeneratedCode div 없음');
+  }
+}
+
+// 간단한 키워드 테스트
+function simpleKeywordTest(summary, precondition, expectedResult) {
+  const summaryLower = summary.toLowerCase();
+  let mapping = '';
+  let script = '';
+  
+  // Summary 키워드 테스트
+  mapping += `[Summary] ${summary}\n`;
+  
+  if (summaryLower.includes('더블클릭')) {
+    mapping += '  → ✅ "더블클릭" 키워드 감지\n';
+    script += 'WebUI.doubleClick(findTestObject("Object/TargetButton"))\n';
+  } else if (summaryLower.includes('클릭')) {
+    mapping += '  → ✅ "클릭" 키워드 감지\n';
+    script += 'WebUI.click(findTestObject("Object/TargetButton"))\n';
+  } else if (summaryLower.includes('입력')) {
+    mapping += '  → ✅ "입력" 키워드 감지\n';
+    script += 'WebUI.setText(findTestObject("Object/InputField"), "testValue")\n';
+  } else {
+    mapping += '  → ❌ 매핑 가능한 키워드 없음\n';
+    script += '// ❌ 매핑 실패: 지원되지 않는 액션\n';
+  }
+  
+  // Expected Result 키워드 테스트
+  if (expectedResult) {
+    mapping += `[Expected Result] ${expectedResult}\n`;
+    const expectedLower = expectedResult.toLowerCase();
+    
+    if (expectedLower.includes('확인') || expectedLower.includes('노출')) {
+      mapping += '  → ✅ "확인/노출" 키워드 감지\n';
+      script += 'WebUI.verifyElementVisible(findTestObject("Object/ResultElement"), 10)\n';
+    } else if (expectedLower.includes('이동')) {
+      mapping += '  → ✅ "이동" 키워드 감지\n';
+      script += 'WebUI.verifyMatch(WebUI.getUrl(), ".*expectedPage.*", true)\n';
+    }
+  }
+  
+  return { mapping, script };
+}
+
+// TC+Script 탭 이벤트 리스너 추가
+document.addEventListener('DOMContentLoaded', function() {
+  // TC+Script 버튼 이벤트 연결
+  const generateBtn = document.getElementById('generateTCScriptBtn');
+  const downloadTCBtn = document.getElementById('downloadTCOnlyBtn');
+  const downloadScriptBtn = document.getElementById('downloadScriptOnlyBtn');
+  const downloadMergedBtn = document.getElementById('downloadMergedBtn');
+  const clearBtn = document.getElementById('clearTCScriptBtn');
+  
+  if (generateBtn) {
+    generateBtn.addEventListener('click', generateTCScript);
+  }
+  
+  if (downloadTCBtn) {
+    downloadTCBtn.addEventListener('click', downloadTCOnly);
+  }
+  
+  if (downloadScriptBtn) {
+    downloadScriptBtn.addEventListener('click', downloadScriptOnly);
+  }
+  
+  if (downloadMergedBtn) {
+    downloadMergedBtn.addEventListener('click', downloadMergedFiles);
+  }
+  
+  if (clearBtn) {
+    clearBtn.addEventListener('click', clearTCScriptOutput);
+  }
+  
+  console.log('TC+Script 탭 이벤트 리스너 등록 완료');
+});
+
+// 개선된 우선순위 기반 Katalon 매핑
+const priorityMappings = [
+  // 구체적인 키워드부터 매칭 (우선순위 높음)
+  { keywords: ["더블클릭", "double", "두번클릭"], action: "doubleClick", type: "action" },
+  { keywords: ["우클릭", "right", "마우스우클릭"], action: "rightClick", type: "action" },
+  { keywords: ["텍스트확인", "문자확인", "문자열확인"], action: "verifyElementText", type: "verify" },
+  { keywords: ["속성확인", "어트리뷰트확인"], action: "verifyElementAttributeValue", type: "verify" },
+  { keywords: ["존재확인", "요소존재"], action: "verifyElementPresent", type: "verify" },
+  { keywords: ["패스워드입력", "비밀번호입력", "암호입력"], action: "setEncryptedText", type: "input" },
+  { keywords: ["텍스트입력", "문자입력"], action: "setText", type: "input" },
+  { keywords: ["페이지이동", "url이동"], action: "navigateToUrl", type: "navigation" },
+  { keywords: ["파일업로드", "파일선택", "업로드"], action: "uploadFile", type: "action" },
+  { keywords: ["새창열기", "새창"], action: "openBrowser", type: "navigation" },
+  { keywords: ["체크해제", "언체크"], action: "uncheck", type: "action" },
+  { keywords: ["요소대기", "엘리먼트대기"], action: "waitForElementPresent", type: "wait" },
+  { keywords: ["알림확인", "얼럿확인"], action: "acceptAlert", type: "action" },
+  { keywords: ["알림취소", "얼럿취소"], action: "dismissAlert", type: "action" },
+  
+  // 일반적인 키워드 (우선순위 낮음)
+  { keywords: ["클릭", "click", "누르기"], action: "click", type: "action" },
+  { keywords: ["입력", "타이핑"], action: "setText", type: "input" },
+  { keywords: ["확인", "검증"], action: "verifyElementPresent", type: "verify" },
+  { keywords: ["노출", "표시", "보임"], action: "verifyElementVisible", type: "verify" },
+  { keywords: ["이동", "가기"], action: "navigateToUrl", type: "navigation" },
+  { keywords: ["선택", "셀렉트"], action: "selectOptionByLabel", type: "action" },
+  { keywords: ["체크", "선택하기"], action: "check", type: "action" },
+  { keywords: ["대기", "잠시"], action: "delay", type: "wait" },
+  { keywords: ["스크롤", "스크롤이동"], action: "scrollToElement", type: "action" },
+  { keywords: ["뒤로가기", "back"], action: "back", type: "navigation" },
+  { keywords: ["앞으로가기", "forward"], action: "forward", type: "navigation" },
+  { keywords: ["새로고침", "refresh", "리프레시"], action: "refresh", type: "navigation" }
+];
+
+// 스마트 테스트 오브젝트 매핑
+const objectMappings = {
+  // 로그인 관련
+  "로그인": "Object/Login/LoginButton",
+  "로그인버튼": "Object/Login/LoginButton", 
+  "사용자명": "Object/Login/UsernameField",
+  "아이디": "Object/Login/UsernameField",
+  "userid": "Object/Login/UsernameField",
+  "비밀번호": "Object/Login/PasswordField",
+  "패스워드": "Object/Login/PasswordField",
+  "password": "Object/Login/PasswordField",
+  
+  // 검색 관련
+  "검색": "Object/Search/SearchButton",
+  "검색버튼": "Object/Search/SearchButton",
+  "검색창": "Object/Search/SearchInput",
+  
+  // 메뉴 관련
+  "메뉴": "Object/Menu/MainMenu",
+  "홈": "Object/Menu/HomeButton",
+  "설정": "Object/Menu/SettingsButton",
+  
+  // 버튼 관련
+  "확인버튼": "Object/Common/ConfirmButton",
+  "취소버튼": "Object/Common/CancelButton",
+  "저장": "Object/Common/SaveButton",
+  "삭제": "Object/Common/DeleteButton",
+  "등록": "Object/Common/RegisterButton",
+  "수정": "Object/Common/EditButton",
+  
+  // 폼 관련
+  "이름": "Object/Form/NameField",
+  "이메일": "Object/Form/EmailField",
+  "전화번호": "Object/Form/PhoneField",
+  "주소": "Object/Form/AddressField",
+  
+  // 기타
+  "링크": "Object/Common/Link",
+  "이미지": "Object/Common/Image",
+  "텍스트": "Object/Common/Text"
+};
+
+// 안전한 컬럼 값 추출 (수정됨)
+function safeGetColumnValue(row, columnName) {
+  try {
+    // 직접 접근 시도
+    if (row && row[columnName] !== undefined) {
+      return row[columnName] || '';
+    }
+    
+    // 소문자로 시도
+    const lowerColumnName = columnName.toLowerCase();
+    if (row && row[lowerColumnName] !== undefined) {
+      return row[lowerColumnName] || '';
+    }
+    
+    // 공백이나 특수문자 처리된 버전 시도
+    const normalizedColumn = columnName.replace(/\s+/g, '').toLowerCase();
+    for (let key in row) {
+      if (key.replace(/\s+/g, '').toLowerCase() === normalizedColumn) {
+        return row[key] || '';
+      }
+    }
+    
+    console.warn(`Column ${columnName} not found in row:`, Object.keys(row));
+    return '';
+  } catch (e) {
+    console.error(`Error accessing column ${columnName}:`, e);
+    return '';
+  }
+}
+
+// 스마트 테스트 오브젝트 추출
+function extractTargetObject(text) {
+  if (!text) return "Object/TODO_DefineObject";
+  
+  const textLower = text.toLowerCase();
+  
+  // 정확히 매칭되는 키워드 찾기
+  for (let key in objectMappings) {
+    if (textLower.includes(key.toLowerCase())) {
+      return objectMappings[key];
+    }
+  }
+  
+  // 매칭되지 않으면 TODO 오브젝트 반환
+  return "Object/TODO_DefineObject";
+}
+
+// TC+Script 엑셀 파일 업로드 핸들러 (디버깅 강화)
+document.addEventListener('DOMContentLoaded', function() {
+  const fileInput = document.getElementById('tcScriptExcelFile');
+  
+  if (fileInput) {
+    console.log('✅ tcScriptExcelFile input 요소 찾음');
+    
+    fileInput.addEventListener('change', function(e) {
+      console.log('📁 파일 업로드 이벤트 발생!');
+      const file = e.target.files[0];
+      
+      if (!file) {
+        console.log('❌ 파일이 선택되지 않음');
+        return;
+      }
+
+      console.log('📁 엑셀 파일 업로드 시작:', {
+        name: file.name,
+        size: file.size,
+        type: file.type
+      });
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          console.log('📊 파일 읽기 완료, 파싱 시작...');
+          
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          
+          console.log('📋 워크북 정보:', {
+            sheetNames: workbook.SheetNames,
+            sheetCount: workbook.SheetNames.length
+          });
+          
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(sheet);
+
+          // 전역 변수에 저장
+          window.tcScriptData = json;
+          tcScriptData = json;
+          
+          console.log('✅ 데이터 저장 완료:', {
+            rowCount: json.length,
+            firstRow: json[0],
+            columns: Object.keys(json[0] || {}),
+            globalVariable: !!window.tcScriptData
+          });
+          
+          // 업로드 완료 표시
+          const mappingDiv = document.getElementById('tcScriptMappingResult');
+          if (mappingDiv) {
+            let previewText = `✅ 엑셀 파일 업로드 완료!\n\n`;
+            previewText += `📊 총 ${json.length}개 행 감지\n\n`;
+            
+            if (json.length > 0) {
+              previewText += `📋 감지된 컬럼명:\n`;
+              Object.keys(json[0]).forEach(col => {
+                previewText += `  • ${col}\n`;
+              });
+              
+              previewText += `\n📝 첫 번째 행 미리보기:\n`;
+              const firstRow = json[0];
+              Object.keys(firstRow).forEach(key => {
+                const value = String(firstRow[key]).substring(0, 50);
+                previewText += `  ${key}: ${value}${String(firstRow[key]).length > 50 ? '...' : ''}\n`;
+              });
+            }
+            
+            previewText += `\n🔧 'TC+Script 생성' 버튼을 클릭하여 매핑을 시작하세요.`;
+            mappingDiv.textContent = previewText;
+            
+            console.log('✅ 미리보기 표시 완료');
+          } else {
+            console.error('❌ tcScriptMappingResult div를 찾을 수 없음');
+          }
+          
+        } catch (error) {
+          console.error('❌ 엑셀 파일 처리 오류:', error);
+          alert(`❌ 엑셀 파일 처리 중 오류가 발생했습니다: ${error.message}`);
+        }
+      };
+      
+      reader.onerror = function(error) {
+        console.error('❌ 파일 읽기 오류:', error);
+        alert('파일을 읽는 중 오류가 발생했습니다.');
+      };
+      
+      reader.readAsArrayBuffer(file);
+    });
+    
+    console.log('✅ 파일 업로드 이벤트 리스너 등록 완료');
+  } else {
+    console.error('❌ tcScriptExcelFile input 요소를 찾을 수 없음');
+  }
+});
+
+// 개선된 키워드 매핑 함수
+function mapToKatalonScript(summary, precondition, expectedResult) {
+  try {
+    const summaryText = safeGetColumnValue({Summary: summary}, 'Summary');
+    const preconditionText = safeGetColumnValue({Precondition: precondition}, 'Precondition');
+    const expectedText = safeGetColumnValue({'Expected Result': expectedResult}, 'Expected Result');
+    
+    let scripts = [];
+    let mappingInfo = [];
+    let hasValidMapping = false;
+    
+    // 컨텍스트별 스크립트 생성
+    const contextualScript = generateContextualScript(preconditionText, summaryText, expectedText);
+    
+    if (contextualScript.scripts.length > 0) {
+      scripts = contextualScript.scripts;
+      mappingInfo = contextualScript.mappingInfo;
+      hasValidMapping = contextualScript.hasValidMapping;
+    } else {
+      // 폴백: 기존 개별 매핑
+      mappingInfo.push("⚠️ 컨텍스트 매핑 실패, 개별 매핑 시도");
+      
+      // 개별 필드 매핑
+      [
+        { field: 'Precondition', text: preconditionText, label: 'Precondition' },
+        { field: 'Summary', text: summaryText, label: 'Main Action' }, 
+        { field: 'Expected Result', text: expectedText, label: 'Verification' }
+      ].forEach(({field, text, label}) => {
+        if (text && text.trim()) {
+          const result = mapSingleField(text, label);
+          if (result.script) {
+            scripts.push(`// ${label}: ${text}`);
+            scripts.push(result.script);
+            mappingInfo.push(`[${field}] ${text}`);
+            mappingInfo.push(`  → ${result.mappingInfo}`);
+            if (result.success) hasValidMapping = true;
+          }
+        }
+      });
+    }
+    
+    // 매핑 실패시 안내
+    if (!hasValidMapping) {
+      scripts = [`// ❌ 자동 매핑 실패: 지원되는 키워드를 찾을 수 없습니다.`, 
+                `// 💡 지원 키워드 예시: ${priorityMappings.slice(0,5).map(m => m.keywords[0]).join(', ')}...`,
+                `// 📝 TODO: 수동으로 스크립트를 작성해주세요.`];
+      mappingInfo.push(`❌ 매핑 실패 - 지원되는 키워드가 없습니다.`);
+      mappingInfo.push(`💡 지원 키워드: ${priorityMappings.slice(0,8).map(m => m.keywords[0]).join(', ')}...`);
+    }
+    
+    return {
+      script: scripts.join('\n'),
+      mappingInfo: mappingInfo.join('\n'),
+      hasValidMapping
+    };
+    
+  } catch (error) {
+    console.error('매핑 중 오류 발생:', error);
+    return {
+      script: `// ❌ 매핑 중 오류 발생: ${error.message}`,
+      mappingInfo: `❌ 오류: ${error.message}`,
+      hasValidMapping: false
+    };
+  }
+}
+
+// 컨텍스트 인식 기반 스크립트 생성
+function generateContextualScript(precondition, summary, expectedResult) {
+  let scripts = [];
+  let mappingInfo = [];
+  let hasValidMapping = false;
+  
+  try {
+    mappingInfo.push("🔄 컨텍스트 기반 스크립트 생성 시작...");
+    
+    // 1. Precondition 처리 (초기 설정)
+    if (precondition && precondition.trim()) {
+      mappingInfo.push(`[Precondition] ${precondition}`);
+      
+      // 브라우저/페이지 관련 precondition
+      if (precondition.includes("페이지") || precondition.includes("사이트") || precondition.includes("화면")) {
+        scripts.push("// Setup: Browser and Page Navigation");
+        scripts.push("WebUI.openBrowser('')");
+        scripts.push("WebUI.navigateToUrl('TODO_SET_TARGET_URL')");
+        scripts.push("WebUI.maximizeWindow()");
+        mappingInfo.push("  → 브라우저 열기 및 페이지 이동 스크립트 생성");
+        hasValidMapping = true;
+      }
+      
+      // 로그인 관련 precondition
+      if (precondition.includes("로그인") || precondition.includes("로그인된")) {
+        scripts.push("// Setup: User Login");
+        scripts.push("WebUI.setText(findTestObject('Object/Login/UsernameField'), 'testUser')");
+        scripts.push("WebUI.setText(findTestObject('Object/Login/PasswordField'), 'testPassword')");
+        scripts.push("WebUI.click(findTestObject('Object/Login/LoginButton'))");
+        mappingInfo.push("  → 로그인 스크립트 생성");
+        hasValidMapping = true;
+      }
+    }
+    
+    // 2. Summary 처리 (메인 액션)
+    if (summary && summary.trim()) {
+      mappingInfo.push(`[Summary] ${summary}`);
+      const mainAction = mapSingleField(summary, "Main Action");
+      
+      if (mainAction.success) {
+        scripts.push("// Main Action");
+        scripts.push(mainAction.script);
+        mappingInfo.push(`  → ${mainAction.mappingInfo}`);
+        hasValidMapping = true;
+      } else {
+        scripts.push(`// Main Action: ${summary}`);
+        scripts.push("// ❌ 매핑 실패: 지원되지 않는 액션");
+        mappingInfo.push("  → ❌ 메인 액션 매핑 실패");
+      }
+    }
+    
+    // 3. Expected Result 처리 (검증)
+    if (expectedResult && expectedResult.trim()) {
+      mappingInfo.push(`[Expected Result] ${expectedResult}`);
+      
+      // 검증 타입별 처리
+      let verificationScript = generateVerificationScript(expectedResult);
+      
+      if (verificationScript.success) {
+        scripts.push("// Verification");
+        scripts.push(verificationScript.script);
+        mappingInfo.push(`  → ${verificationScript.mappingInfo}`);
+        hasValidMapping = true;
+      } else {
+        scripts.push(`// Verification: ${expectedResult}`);
+        scripts.push("// ❌ 검증 스크립트 생성 실패");
+        mappingInfo.push("  → ❌ 검증 스크립트 매핑 실패");
+      }
+    }
+    
+    // 4. 마무리 (필요시)
+    if (hasValidMapping && scripts.length > 0) {
+      scripts.push("// Cleanup");
+      scripts.push("WebUI.closeBrowser()");
+      mappingInfo.push("브라우저 종료 스크립트 추가");
+    }
+    
+    return { scripts, mappingInfo, hasValidMapping };
+    
+  } catch (error) {
+    console.error('컨텍스트 스크립트 생성 중 오류:', error);
+    return { 
+      scripts: [`// ❌ 컨텍스트 스크립트 생성 실패: ${error.message}`], 
+      mappingInfo: [`❌ 오류: ${error.message}`], 
+      hasValidMapping: false 
+    };
+  }
+}
+
+// 단일 필드 매핑
+function mapSingleField(text, fieldType) {
+  try {
+    const textLower = text.toLowerCase();
+    
+    // 우선순위 매핑 수행
+    for (let mapping of priorityMappings) {
+      for (let keyword of mapping.keywords) {
+        if (textLower.includes(keyword.toLowerCase())) {
+          const targetObject = extractTargetObject(text);
+          const script = generateKatalonScript(mapping.action, mapping.type, targetObject, text);
+          
+          return {
+            script: script,
+            mappingInfo: `매핑 성공: "${keyword}" → ${mapping.action}`,
+            success: true
+          };
+        }
+      }
+    }
+    
+    return {
+      script: null,
+      mappingInfo: `매핑 실패: 지원되는 키워드 없음`,
+      success: false
+    };
+    
+  } catch (error) {
+    return {
+      script: `// ❌ 매핑 오류: ${error.message}`,
+      mappingInfo: `오류: ${error.message}`,
+      success: false
+    };
+  }
+}
+
+// 검증 스크립트 생성
+function generateVerificationScript(expectedResult) {
+  try {
+    const expectedLower = expectedResult.toLowerCase();
+    const targetObject = extractTargetObject(expectedResult);
+    
+    // 텍스트 검증
+    if (expectedLower.includes("텍스트") || expectedLower.includes("문자") || expectedLower.includes("표시")) {
+      return {
+        script: `WebUI.verifyElementText(findTestObject('${targetObject}'), 'TODO_EXPECTED_TEXT')`,
+        mappingInfo: "텍스트 검증 스크립트 생성",
+        success: true
+      };
+    }
+    
+    // 요소 존재 검증
+    if (expectedLower.includes("존재") || expectedLower.includes("노출") || expectedLower.includes("보임")) {
+      return {
+        script: `WebUI.verifyElementVisible(findTestObject('${targetObject}'), 10)`,
+        mappingInfo: "요소 가시성 검증 스크립트 생성", 
+        success: true
+      };
+    }
+    
+    // 페이지 이동 검증
+    if (expectedLower.includes("페이지") || expectedLower.includes("이동") || expectedLower.includes("url")) {
+      return {
+        script: `WebUI.verifyMatch(WebUI.getUrl(), '.*TODO_EXPECTED_URL.*', true)`,
+        mappingInfo: "페이지 이동 검증 스크립트 생성",
+        success: true
+      };
+    }
+    
+    // 기본 존재 검증
+    return {
+      script: `WebUI.verifyElementPresent(findTestObject('${targetObject}'), 10)`,
+      mappingInfo: "기본 요소 존재 검증 스크립트 생성",
+      success: true
+    };
+    
+  } catch (error) {
+    return {
+      script: `// ❌ 검증 스크립트 생성 오류: ${error.message}`,
+      mappingInfo: `검증 스크립트 오류: ${error.message}`,
+      success: false
+    };
+  }
+}
+
+// Katalon 스크립트 생성
+function generateKatalonScript(action, type, targetObject, originalText) {
+  try {
+    switch (action) {
+      case "click":
+      case "doubleClick":
+      case "rightClick":
+        return `WebUI.${action}(findTestObject('${targetObject}'))`;
+        
+      case "setText":
+        return `WebUI.setText(findTestObject('${targetObject}'), 'TODO_INPUT_TEXT')`;
+        
+      case "setEncryptedText":
+        return `WebUI.setEncryptedText(findTestObject('${targetObject}'), 'TODO_ENCRYPTED_PASSWORD')`;
+        
+      case "verifyElementText":
+        return `WebUI.verifyElementText(findTestObject('${targetObject}'), 'TODO_EXPECTED_TEXT')`;
+        
+      case "verifyElementPresent":
+        return `WebUI.verifyElementPresent(findTestObject('${targetObject}'), 10)`;
+        
+      case "verifyElementVisible":
+        return `WebUI.verifyElementVisible(findTestObject('${targetObject}'), 10)`;
+        
+      case "verifyElementAttributeValue":
+        return `WebUI.verifyElementAttributeValue(findTestObject('${targetObject}'), 'TODO_ATTRIBUTE', 'TODO_VALUE', 10)`;
+        
+      case "navigateToUrl":
+        return `WebUI.navigateToUrl('TODO_TARGET_URL')`;
+        
+      case "openBrowser":
+        return `WebUI.openBrowser('')`;
+        
+      case "selectOptionByLabel":
+        return `WebUI.selectOptionByLabel(findTestObject('${targetObject}'), 'TODO_OPTION_TEXT', false)`;
+        
+      case "check":
+      case "uncheck":
+        return `WebUI.${action}(findTestObject('${targetObject}'))`;
+        
+      case "delay":
+        return `WebUI.delay(3)`;
+        
+      case "waitForElementPresent":
+        return `WebUI.waitForElementPresent(findTestObject('${targetObject}'), 10)`;
+        
+      case "scrollToElement":
+        return `WebUI.scrollToElement(findTestObject('${targetObject}'), 10)`;
+        
+      case "uploadFile":
+        return `WebUI.uploadFile(findTestObject('${targetObject}'), 'TODO_FILE_PATH')`;
+        
+      case "acceptAlert":
+      case "dismissAlert":
+        return `WebUI.${action}()`;
+        
+      case "back":
+      case "forward":
+      case "refresh":
+        return `WebUI.${action}()`;
+        
+      default:
+        return `// TODO: Implement ${action} for ${originalText}`;
+    }
+  } catch (error) {
+    return `// ❌ 스크립트 생성 오류: ${error.message}`;
+  }
+}
+
+// TC+Script 생성 함수
+function generateTCScript() {
+  if (!tcScriptData || tcScriptData.length === 0) {
+    alert('먼저 엑셀 파일을 업로드해주세요.');
+    return;
+  }
+
+  tcScriptResults = [];
+  let mappingResults = '';
+  let generatedCode = '';
+
+  tcScriptData.forEach((row, idx) => {
+    const summary = row['Summary'] || '';
+    const precondition = row['Precondition'] || '';
+    const expectedResult = row['Expected Result'] || '';
+    
+    const rawName = summary || `TestCase_${idx + 1}`;
+    const name = rawName.replace(/[\\/:*?"<>|]/g, '').trim();
+    const numberedName = `${String(idx + 1).padStart(3, '0')}_${name}`;
+    
+    // 키워드 매핑 실행
+    const mappingResult = mapToKatalonScript(summary, precondition, expectedResult);
+    
+    // TC 파일 생성 (기존 Comment 방식)
+    const fields = ['Test Level', 'Main Category', 'Sub Category', 'Detail Category', 'Summary', 'Precondition', 'Steps', 'Expected Result'];
+    const formatBlock = (label, value) => {
+      if (!value) return `${label}   :`;
+      return `${label}   : ${value.toString().split(/\n|\\n/).map((l, i) => (i === 0 ? l : ' '.repeat(label.length + 5) + l)).join('\n')}`;
+    };
+
+    const comment = `=================== [Testcase] ===================
+
+${fields.map(f => formatBlock(f, row[f] || '')).join('\n')}
+
+===================================================`;
+
+    const tcContent = `<?xml version="1.0" encoding="UTF-8"?>
+<TestCaseEntity>
+   <description></description>
+   <name>${numberedName}</name>
+   <tag></tag>
+   <comment></comment>
+   <recordOption>OTHER</recordOption>
+   <testCaseGuid>${generateUUID()}</testCaseGuid>
+</TestCaseEntity>`;
+
+    // Script 파일 생성 (실제 Katalon 코드)
+    const scriptContent = `import static com.kms.katalon.core.checkpoint.CheckpointFactory.findCheckpoint
+import static com.kms.katalon.core.testcase.TestCaseFactory.findTestCase
+import static com.kms.katalon.core.testdata.TestDataFactory.findTestData
+import static com.kms.katalon.core.testobject.ObjectRepository.findTestObject
+import static com.kms.katalon.core.testobject.ObjectRepository.findWindowsObject
+import com.kms.katalon.core.checkpoint.Checkpoint as Checkpoint
+import com.kms.katalon.core.cucumber.keyword.CucumberBuiltinKeywords as CucumberKW
+import com.kms.katalon.core.mobile.keyword.MobileBuiltInKeywords as Mobile
+import com.kms.katalon.core.model.FailureHandling as FailureHandling
+import com.kms.katalon.core.testcase.TestCase as TestCase
+import com.kms.katalon.core.testdata.TestData as TestData
+import com.kms.katalon.core.testng.keyword.TestNGBuiltinKeywords as TestNGKW
+import com.kms.katalon.core.testobject.TestObject as TestObject
+import com.kms.katalon.core.webservice.keyword.WSBuiltInKeywords as WS
+import com.kms.katalon.core.webui.keyword.WebUiBuiltInKeywords as WebUI
+import com.kms.katalon.core.windows.keyword.WindowsBuiltinKeywords as Windows
+import internal.GlobalVariable as GlobalVariable
+import org.openqa.selenium.Keys as Keys
+
+// ============== Test Case Comment ==============
+WebUI.comment("""
+${comment}
+""")
+
+// ============== Generated Katalon Script ==============
+${mappingResult.script}`;
+
+    // 병합 파일 생성 (TC + Script)
+    const mergedContent = scriptContent;
+
+    tcScriptResults.push({
+      name: numberedName,
+      tcContent,
+      scriptContent,
+      mergedContent,
+      mappingInfo: mappingResult.mappingInfo
+    });
+
+    // 결과 텍스트 생성
+    mappingResults += `📋 [${idx + 1}] ${numberedName}\n${mappingResult.mappingInfo}\n\n`;
+    generatedCode += `// ========== ${numberedName} ==========\n${mappingResult.script}\n\n`;
+  });
+
+  // 결과 표시
+  document.getElementById('tcScriptMappingResult').textContent = mappingResults;
+  document.getElementById('tcScriptGeneratedCode').textContent = generatedCode;
+}
+
+// TC만 다운로드
+function downloadTCOnly() {
+  if (!tcScriptResults || tcScriptResults.length === 0) {
+    alert('먼저 TC+Script를 생성해주세요.');
+    return;
+  }
+
+  const zip = new JSZip();
+  tcScriptResults.forEach(file => {
+    zip.file(`${file.name}.tc`, file.tcContent);
+  });
+
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = 'tc_files_only.zip';
+    a.click();
+  });
+}
+
+// Script만 다운로드
+function downloadScriptOnly() {
+  if (!tcScriptResults || tcScriptResults.length === 0) {
+    alert('먼저 TC+Script를 생성해주세요.');
+    return;
+  }
+
+  const zip = new JSZip();
+  tcScriptResults.forEach(file => {
+    zip.file(`${file.name}.groovy`, file.scriptContent);
+  });
+
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = 'script_files_only.zip';
+    a.click();
+  });
+}
+
+// 병합 파일 다운로드
+function downloadMergedFiles() {
+  if (!tcScriptResults || tcScriptResults.length === 0) {
+    alert('먼저 TC+Script를 생성해주세요.');
+    return;
+  }
+
+  const zip = new JSZip();
+  tcScriptResults.forEach(file => {
+    const folder = zip.folder(file.name);
+    folder.file(`${file.name}.tc`, file.tcContent);
+    folder.file(`${file.name}.groovy`, file.mergedContent);
+  });
+
+  zip.generateAsync({ type: 'blob' }).then(content => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(content);
+    a.download = 'merged_tc_script_files.zip';
+    a.click();
+  });
+}
+
+// 결과 초기화
+function clearTCScriptOutput() {
+  document.getElementById('tcScriptMappingResult').textContent = '엑셀 파일을 업로드하고 TC+Script 생성을 클릭하면 매핑 결과가 여기에 표시됩니다.';
+  document.getElementById('tcScriptGeneratedCode').textContent = '생성된 Katalon 스크립트가 여기에 표시됩니다.';
+  tcScriptData = [];
+  tcScriptResults = [];
+}
       } catch (err) {
         resultDiv.innerHTML = `<p style=\"color:red\">❌ 파싱 실패: ${err.message}</p>`;
       }
@@ -235,8 +1795,14 @@ buttons.forEach(button => {
   });
 });
 
-// CSV 파싱 로직
+// CSV 파싱 로직 (수정됨)
 let parsed = [];
+
+// 표준 필드 정의
+const standardFields = [
+  'Test Level', 'Main Category', 'Sub Category', 'Detail Category',
+  'Summary', 'Precondition', 'Steps', 'Expected Result'
+];
 
 document.getElementById('csvFile').addEventListener('change', function(e) {
   const file = e.target.files[0];
@@ -279,7 +1845,14 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
         }
       }
       pushCurrent();
-      parsed.push(obj);
+
+      // 표준 필드만 추출하고 누락된 필드는 빈 문자열로 채움
+      const standardObj = { Index: i + 1 };
+      standardFields.forEach(field => {
+        standardObj[field] = obj[field] || '';
+      });
+      
+      parsed.push(standardObj);
     }
 
     if (parsed.length === 0) {
@@ -287,14 +1860,15 @@ document.getElementById('csvFile').addEventListener('change', function(e) {
       return;
     }
 
-    const allKeys = [...new Set(parsed.flatMap(o => Object.keys(o)))];
-    const data = parsed.map(row => allKeys.map(k => row[k] || ''));
+    // 고정된 컬럼 순서 사용
+    const fixedColumns = ['Index', ...standardFields];
+    const data = parsed.map(row => fixedColumns.map(k => row[k] || ''));
 
     const table = $('#resultTable');
     table.show();
     table.DataTable({
       data: data,
-      columns: allKeys.map(h => ({ title: h })),
+      columns: fixedColumns.map(h => ({ title: h })),
       destroy: true,
       scrollX: true,
       pageLength: 10
@@ -336,7 +1910,7 @@ document.getElementById('downloadBtn').addEventListener('click', function() {
 });
 
 document.getElementById('exampleDownloadBtn').addEventListener('click', function() {
-  // 1. 헤더 정의
+  // 수정된 헤더 (고정된 9개 컬럼)
   const headers = [
     "Index",
     "Test Level",
@@ -349,15 +1923,15 @@ document.getElementById('exampleDownloadBtn').addEventListener('click', function
     "Expected Result"
   ];
 
-  // 2. 예시 데이터 (비워둠)
+  // 예시 데이터 (비워둠)
   const data = [headers];
 
-  // 3. 시트 및 워크북 생성
+  // 시트 및 워크북 생성
   const ws = XLSX.utils.aoa_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Testcase");
 
-  // 4. 파일로 변환 및 다운로드
+  // 파일로 변환 및 다운로드
   const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
   const blob = new Blob([wbout], { type: "application/octet-stream" });
   const link = document.createElement("a");
@@ -393,6 +1967,8 @@ document.getElementById('excelFile').addEventListener('change', function(e) {
     const workbook = XLSX.read(data, { type: 'array' });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const json = XLSX.utils.sheet_to_json(sheet);
+    window.tcScriptData = json;
+    tcScriptData = json;
 
     json.forEach((row, idx) => {
       const rawName = row['Summary'] || row['Name'] || `TestCase_${idx + 1}`;
