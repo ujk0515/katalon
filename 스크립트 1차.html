@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>🎪 테스트 목적 설명 생성기</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 30px; max-width: 800px; margin: auto; }
+    input, button { width: 100%; margin-top: 10px; padding: 10px; font-size: 16px; }
+    .download-buttons { display: flex; gap: 10px; margin-top: 15px; }
+    .download-buttons button { width: 48%; }
+    #output { margin-top: 20px; font-weight: bold; background: #f0f0f0; padding: 15px; border-radius: 6px; white-space: pre-line; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+  <h2>🎪 테스트 목적 설명 생성기 (엑셀 업로드 기반)</h2>
+  <input type="file" id="excelFile" accept=".xlsx">
+
+  <button onclick="handleFile()">✅ 테스트 목적 문장 생성</button>
+  
+  <div id="downloadSection" class="hidden">
+    <div class="download-buttons">
+      <button onclick="downloadTxt()">📄 TXT 파일 다운로드</button>
+      <button onclick="downloadExcel()">📊 엑셀 파일 다운로드</button>
+    </div>
+  </div>
+  
+  <div id="output"></div>
+
+  <script>
+    let generatedData = []; // 생성된 데이터를 저장할 배열
+
+    function cleanText(text) {
+      return text.replace(/\d+\.?\s*/g, '').trim();
+    }
+
+    function handleFile() {
+      const fileInput = document.getElementById('excelFile');
+      if (!fileInput.files.length) {
+        document.getElementById('output').innerText = '엑셀 파일을 선택해주세요.';
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        const json = XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true });
+
+        let outputText = '';
+        generatedData = []; // 데이터 초기화
+
+        json.forEach((row, index) => {
+          const summary = cleanText(row['Summary'] || '');
+          let preconditionRaw = row['Precondition'] || '';
+          let precondition = preconditionRaw
+            .split(/\r?\n/)                    // 줄바꿈 기준 분리
+            .map(item => cleanText(item))       // 숫자 접두어 제거
+            .filter(Boolean)                    // 빈 항목 제거
+            .join(', ');                        // 쉼표로 연결
+
+          const expected = cleanText(row['Expected Result'] || '');
+
+          if (summary && expected) {
+            let sentence = '';
+            if (precondition) {
+              sentence = `${precondition} 상황에서, "${summary}"을(를) 수행하여 ${expected}`;
+            } else {
+              sentence = `"${summary}"을(를) 수행하여 ${expected}`;
+            }
+            
+            // 다운로드용 데이터 저장
+            generatedData.push({
+              번호: index + 1,
+              테스트목적: sentence,
+              원본_Summary: summary,
+              원본_Precondition: precondition,
+              원본_ExpectedResult: expected
+            });
+            
+            outputText += `✅ [${index + 1}] ${sentence}\n\n`;
+          }
+        });
+
+        const outputElement = document.getElementById('output');
+        const downloadSection = document.getElementById('downloadSection');
+        
+        if (outputText) {
+          outputElement.innerText = outputText;
+          downloadSection.classList.remove('hidden'); // 다운로드 버튼 표시
+        } else {
+          outputElement.innerText = '유효한 데이터가 없습니다. Summary, Precondition, Expected Result 열이 모두 포함되어야 합니다.';
+          downloadSection.classList.add('hidden'); // 다운로드 버튼 숨김
+        }
+      };
+      reader.readAsArrayBuffer(fileInput.files[0]);
+    }
+
+    function downloadTxt() {
+      if (generatedData.length === 0) {
+        alert('다운로드할 데이터가 없습니다.');
+        return;
+      }
+
+      let txtContent = '테스트 목적 설명 목록\n';
+      txtContent += '=' + '='.repeat(30) + '\n\n';
+      
+      generatedData.forEach(item => {
+        txtContent += `[${item.번호}] ${item.테스트목적}\n\n`;
+      });
+
+      const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `테스트목적설명_${new Date().toISOString().slice(0, 10)}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function downloadExcel() {
+      if (generatedData.length === 0) {
+        alert('다운로드할 데이터가 없습니다.');
+        return;
+      }
+
+      // 엑셀용 데이터 준비
+      const excelData = generatedData.map(item => ({
+        '번호': item.번호,
+        '테스트 목적': item.테스트목적,
+        '원본 Summary': item.원본_Summary,
+        '원본 Precondition': item.원본_Precondition,
+        '원본 Expected Result': item.원본_ExpectedResult
+      }));
+
+      // 워크북 생성
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '테스트목적설명');
+
+      // 열 너비 조정
+      const colWidths = [
+        { wch: 8 },   // 번호
+        { wch: 60 },  // 테스트 목적
+        { wch: 30 },  // 원본 Summary
+        { wch: 30 },  // 원본 Precondition
+        { wch: 30 }   // 원본 Expected Result
+      ];
+      ws['!cols'] = colWidths;
+
+      // 파일 다운로드
+      const fileName = `테스트목적설명_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    }
+  </script>
+
+</body>
+</html>
