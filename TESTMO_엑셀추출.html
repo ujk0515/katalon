@@ -231,6 +231,13 @@ function addNumberingToText(text) {
   return `1. ${textStr}`;
 }
 
+function addLineNumbering(text) {
+  if (!text || !text.toString().trim()) return text;
+
+  const lines = text.toString().trim().split('\n').filter(line => line.trim() !== '');
+  return lines.map((line, index) => `${index + 1}. ${line.trim()}`).join('\n');
+}
+
 function renderMerged() {
   if (currentFileType !== 'csv') {
     document.getElementById('mergedTable').innerHTML = '<p style="color: #ff6b6b; padding: 20px;">⚠️ 병합 탭은 CSV 파일만 지원합니다. CSV 파일을 업로드해주세요.</p>';
@@ -263,7 +270,7 @@ function renderMerged() {
     
     // Combined Steps에 번호 추가 (원본 데이터도 업데이트)
     const cleanedCombinedSteps = combinedSteps.trim();
-    const numberedCombinedSteps = addNumberingToText(cleanedCombinedSteps);
+    const numberedCombinedSteps = addLineNumbering(cleanedCombinedSteps);
     
     // globalJson에도 Combined Steps 값을 저장하여 분리 탭에서 사용할 수 있도록 함
     globalJson[index]['Combined Steps'] = numberedCombinedSteps;
